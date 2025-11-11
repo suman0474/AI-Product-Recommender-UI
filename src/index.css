@@ -1,0 +1,189 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Light theme to match screenshots */
+    --background: 220 100% 98%;
+    --foreground: 222 47% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    /* Primary is deep navy for CTA like "Sign In" and badge */
+    --primary: 222 40% 14%;
+    --primary-foreground: 210 40% 98%;
+
+    /* Secondary is subtle slate background */
+    --secondary: 220 23% 97%;
+    --secondary-foreground: 222 47% 11%;
+
+    --muted: 220 20% 96%;
+    --muted-foreground: 220 9% 46%;
+
+    --accent: 220 23% 97%;
+    --accent-foreground: 222 47% 11%;
+
+    --destructive: 0 72% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 13% 90%;
+    --input: 220 13% 92%;
+    --ring: 220 94% 65%;
+
+    --radius: 0.75rem;
+
+    /* Brand/gradient hues used in hero buttons */
+    --ai-primary: 220 94% 65%; /* blue-500 */
+    --ai-primary-glow: 210 94% 61%; /* lighter blue */
+    --ai-secondary: 220 94% 65%;
+    --ai-accent: 222 40% 14%;
+    --ai-success: 142 71% 45%;
+    --ai-success-light: 142 45% 92%;
+    --ai-warning: 38 92% 50%;
+    --ai-warning-light: 48 100% 96%;
+    --ai-error: 0 84% 60%;
+    --ai-error-light: 0 100% 97%;
+    --ai-blue: 220 94% 65%; /* changed from purple to blue */
+    --ai-light-blue: 210 85% 70%; /* changed from pink to light blue */
+    
+    /* Soft gradients for page and components */
+    --gradient-primary: linear-gradient(135deg, hsl(220 94% 65%), hsl(210 94% 61%));
+    --gradient-secondary: linear-gradient(135deg, hsl(220 100% 98%), hsl(216 100% 97%));
+    --gradient-success: linear-gradient(135deg, hsl(142 71% 45%), hsl(151 55% 52%));
+    --gradient-card: linear-gradient(145deg, hsl(0 0% 100%), hsl(220 23% 98%));
+    --gradient-border: linear-gradient(90deg, hsl(220 94% 65% / 0.35), hsl(210 94% 61% / 0.35));
+    --gradient-page: radial-gradient(1200px 400px at -10% -10%, hsl(220 94% 65% / 0.07), transparent 60%), radial-gradient(1200px 400px at 110% -10%, hsl(210 94% 61% / 0.07), transparent 60%), linear-gradient(180deg, hsl(220 100% 99%), hsl(220 95% 96%));
+    
+    /* Soft shadows */
+    --shadow-card: 0 10px 20px hsl(220 40% 2% / 0.05), 0 2px 6px hsl(220 40% 2% / 0.06);
+    --shadow-glow: 0 8px 24px hsl(220 94% 65% / 0.25);
+    --shadow-glow-blue: 0 8px 24px hsl(220 94% 65% / 0.25);
+    --shadow-glow-light-blue: 0 8px 24px hsl(210 85% 70% / 0.25);
+    --shadow-glow-success: 0 8px 24px hsl(142 71% 45% / 0.25);
+    
+    /* Animations */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-glow: all 0.3s ease-in-out;
+
+    /* Sidebar tokens (kept for completeness) */
+    --sidebar-background: 220 23% 97%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-primary: 222 40% 14%;
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 220 23% 97%;
+    --sidebar-accent-foreground: 222 47% 11%;
+    --sidebar-border: 220 13% 90%;
+    --sidebar-ring: 220 94% 65%;
+  }
+
+  .dark {
+    /* Already dark theme - keeping same values */
+    --background: 210 15% 8%;
+    --foreground: 210 40% 98%;
+    --card: 210 15% 12%;
+    --card-foreground: 210 40% 98%;
+    --popover: 210 15% 12%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 210 15% 8%;
+    --secondary: 210 15% 18%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 210 15% 15%;
+    --muted-foreground: 215.4 16.3% 56.9%;
+    --accent: 210 15% 18%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 50.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 210 15% 20%;
+    --input: 210 15% 18%;
+    --ring: 217 91% 60%;
+    --sidebar-background: 210 15% 10%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 210 15% 8%;
+    --sidebar-accent: 210 15% 18%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 210 15% 20%;
+    --sidebar-ring: 217 91% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+  html {
+    font-family: "Inter", ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  }
+}
+/* For specific containers when needed */
+.custom-no-scrollbar,
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;     /* Firefox */
+}
+
+.custom-no-scrollbar::-webkit-scrollbar,
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari, Opera */
+}
+
+/* Components matching the screenshots */
+@layer components {
+  .app-gradient {
+    background: var(--gradient-page);
+  }
+
+  .btn-primary {
+    @apply text-white font-medium shadow-md rounded-lg transition-colors duration-200;
+    background: var(--gradient-primary);
+    box-shadow: var(--shadow-glow);
+  }
+  .btn-primary:hover {
+    filter: brightness(0.98);
+  }
+
+  .btn-secondary {
+    @apply bg-white text-foreground border rounded-lg font-medium transition-colors duration-200;
+    border-color: hsl(var(--border));
+  }
+  .btn-secondary:hover {
+    @apply bg-muted;
+  }
+
+  .surface-card {
+    @apply bg-card rounded-xl text-foreground;
+    box-shadow: var(--shadow-card);
+  }
+
+  .form-input {
+    @apply w-full rounded-lg bg-white text-foreground placeholder:text-muted-foreground border outline-none;
+    border-color: hsl(var(--border));
+  }
+  .form-input:focus {
+    @apply ring-2;
+    --tw-ring-color: hsl(var(--ring));
+  }
+
+  /* Cross-browser gradient text helper */
+  .text-gradient {
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+  }
+}
