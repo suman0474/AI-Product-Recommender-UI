@@ -14,7 +14,7 @@ import {
   AnalysisImageResult,
 } from "./types";
 
-const BASE_URL = "http://localhost:5000";
+export const BASE_URL = "https://zestful-solace-production-ea2e.up.railway.app";
 axios.defaults.baseURL = BASE_URL;
 axios.defaults.withCredentials = true;
 
@@ -170,12 +170,17 @@ export const getSubmodelMapping = async (): Promise<Record<string, string>> => {
   }
 };
 
-let hasValidatedOnce = false;
+// Track if validation has been called at least once per session to help backend
+const validationTracker = new Map<string, boolean>();
+
 /**
  * Initialize a new search session
  */
 export const initializeNewSearch = async (searchSessionId: string): Promise<void> => {
   try {
+    // Clear validation tracker for fresh start
+    validationTracker.set(searchSessionId, false);
+    
     await axios.post('/new-search', {
       search_session_id: searchSessionId
     });
@@ -184,6 +189,13 @@ export const initializeNewSearch = async (searchSessionId: string): Promise<void
     console.error("Failed to initialize new search session:", error.response?.data || error.message);
     // Don't throw error - continue with search even if initialization fails
   }
+};
+
+/**
+ * Clean up validation tracker for a session (call when tab closes)
+ */
+export const clearSessionValidationState = (searchSessionId: string): void => {
+  validationTracker.delete(searchSessionId);
 };
 
 /**
@@ -197,9 +209,13 @@ export const validateRequirements = async (
   try {
     const normalizedInput = normalizeUserInput(userInput);
 
+    // Check if this session has validated before
+    const sessionId = searchSessionId || 'default';
+    const hasSessionValidated = validationTracker.get(sessionId) || false;
+
     const payload: any = {
       user_input: normalizedInput,
-      is_repeat: hasValidatedOnce, // ✅ tell backend if this is a repeat
+      is_repeat: hasSessionValidated, // ✅ tell backend if this session has validated before
     };
 
     if (productType) {
@@ -212,7 +228,7 @@ export const validateRequirements = async (
 
     const response = await axios.post(`/validate`, payload);
 
-    hasValidatedOnce = true; // ✅ mark that validation has run at least once
+    validationTracker.set(sessionId, true); // ✅ mark that this session has validated at least once
 
     return convertKeysToCamelCase(response.data) as ValidationResult;
   } catch (error: any) {
@@ -299,11 +315,17 @@ export const structureRequirements = async (fullInput: string): Promise<any> => 
 /**
  * Discovers advanced parameters from top vendors for a product type
  */
-export const discoverAdvancedParameters = async (productType: string): Promise<any> => {
+export const discoverAdvancedParameters = async (productType: string, searchSessionId?: string): Promise<any> => {
   try {
-    const response = await axios.post(`/api/advanced_parameters`, { 
+    const payload: any = { 
       product_type: productType 
-    });
+    };
+    
+    if (searchSessionId) {
+      payload.search_session_id = searchSessionId;
+    }
+    
+    const response = await axios.post(`/api/advanced_parameters`, payload);
     return convertKeysToCamelCase(response.data);
   } catch (error: any) {
     console.error("Advanced parameters discovery error:", error.response?.data || error.message);
@@ -395,11 +417,17 @@ export const approveOrRejectUser = async (
 /**
  * Classifies user intent and determines next workflow step
  */
-export const classifyIntent = async (userInput: string): Promise<IntentClassificationResult> => {
+export const classifyIntent = async (userInput: string, searchSessionId?: string): Promise<IntentClassificationResult> => {
   try {
-    const response = await axios.post(`/api/intent`, {
+    const payload: any = {
       userInput,
-    });
+    };
+    
+    if (searchSessionId) {
+      payload.search_session_id = searchSessionId;
+    }
+    
+    const response = await axios.post(`/api/intent`, payload);
     return response.data;
   } catch (error: any) {
     console.error("Intent classification error:", error.response?.data || error.message);
@@ -419,15 +447,24 @@ export const generateAgentResponse = async (
   step: string,
   dataContext: any,
   userMessage: string,
-  intent?: string
+  intent?: string,
+  searchSessionId?: string
 ): Promise<AgentResponse> => {
   try {
-    const response = await axios.post(`/api/sales-agent`, {
+    const payload: any = {
       step,
       dataContext,
       userMessage,
       intent,
-    });
+    };
+
+    // Include session ID if provided
+    if (searchSessionId) {
+      payload.search_session_id = searchSessionId;
+      console.log(`[SESSION_${searchSessionId}] Generating agent response for step: ${step}`);
+    }
+
+    const response = await axios.post(`/api/sales-agent`, payload);
     
     // Return the enhanced response structure
     return {

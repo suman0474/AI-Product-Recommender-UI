@@ -113,11 +113,11 @@ function renderFlatFieldsList(
     // Add all fields for this category
     categoryFields.forEach((field) => {
       fields.push(
-        <div key={field.fullKey} className="grid grid-cols-[auto,1fr] items-start gap-x-4 ml-6 text-xs mb-1">
+        <div key={field.fullKey} className="flex items-start gap-x-2 ml-6 text-xs mb-1">
           <TooltipProvider delayDuration={200}>
             <Tooltip>
               <TooltipTrigger asChild>
-                <span className="cursor-pointer font-medium text-muted-foreground hover:underline text-left">
+                <span className="cursor-pointer font-medium text-muted-foreground hover:underline">
                   {field.fieldName}:
                 </span>
               </TooltipTrigger>
@@ -132,10 +132,11 @@ function renderFlatFieldsList(
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+
           <span
-            className={`font-mono text-right break-words ${field.isFilled ? "text-green-700" : "text-orange-500"}`}
+            className={`break-words ${field.isFilled ? "text-green-700 font-mono" : "text-red-500 font-mono"}`}
           >
-            {field.isFilled ? field.displayValue : ""}
+            {field.isFilled ? field.displayValue : "Not specified"}
           </span>
         </div>
       );
@@ -221,29 +222,14 @@ const LeftSidebar = ({
           <div className="w-14 h-14 rounded-full flex items-center justify-center shadow" style={{ background: 'var(--gradient-primary)' }}>
             <Bot className="h-8 w-8 text-white" />
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="ml-auto"
-            onClick={() => setIsDocked(!isDocked)}
-            aria-label={isDocked ? "Expand sidebar" : "Collapse sidebar"}
-          >
-            {isDocked ? <ChevronRight /> : <ChevronLeft />}
-          </Button>
+          {/* Dock button moved to corner */}
         </div>
       )}
       
       {/* Minimal header for dashboard when hideProfile is true */}
       {hideProfile && (
         <div className="flex items-center justify-end py-4 px-3 flex-shrink-0">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setIsDocked(!isDocked)}
-            aria-label={isDocked ? "Expand sidebar" : "Collapse sidebar"}
-          >
-            {isDocked ? <ChevronRight /> : <ChevronLeft />}
-          </Button>
+          {/* Dock button moved to corner, this space can be used for other content */}
         </div>
       )}
 

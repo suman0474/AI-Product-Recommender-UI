@@ -26,9 +26,12 @@ import {
   discoverAdvancedParameters,
   addAdvancedParameters,
   initializeNewSearch,
+  clearSessionValidationState,
 } from "./api";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/ui/button";
+import { ChevronLeft, ChevronRight } from "lucide-react";
  
 type ConversationStep = WorkflowStep;
  
@@ -43,6 +46,16 @@ const AIRecommender = ({ initialInput, fillParent }: { initialInput?: string; fi
     console.log(`[SEARCH_SESSION] Created new AIRecommender with session ID: ${id}`);
     return id;
   });
+
+  // Add session tracking for debugging
+  useEffect(() => {
+    console.log(`[TAB_SESSION] Tab initialized with session ID: ${searchSessionId}`);
+    return () => {
+      console.log(`[TAB_SESSION] Tab with session ID ${searchSessionId} is unmounting`);
+      // Clean up validation tracker when component unmounts
+      clearSessionValidationState(searchSessionId);
+    };
+  }, [searchSessionId]);
   
   const [collectedData, setCollectedData] = useState<{ [key: string]: any }>({});
   const [advancedParameters, setAdvancedParameters] = useState<AdvancedParametersResult | null>(null);
@@ -64,11 +77,11 @@ const AIRecommender = ({ initialInput, fillParent }: { initialInput?: string; fi
   const [isStreaming, setIsStreaming] = useState(false);
   const [isDocked, setIsDocked] = useState(true);
   const [isRightDocked, setIsRightDocked] = useState(true);
-  const DEFAULT_DOCKED_WIDTH = 7;
+  const DEFAULT_DOCKED_WIDTH = 0;
   const DEFAULT_EXPANDED_WIDTH = 16;
-  const DEFAULT_RIGHT_DOCKED_WIDTH = 7;
+  const DEFAULT_RIGHT_DOCKED_WIDTH = 0;
   const DEFAULT_RIGHT_EXPANDED_WIDTH = 46;
-  const [widths, setWidths] = useState({ left: DEFAULT_EXPANDED_WIDTH, center: 39, right: DEFAULT_RIGHT_EXPANDED_WIDTH });
+  const [widths, setWidths] = useState({ left: DEFAULT_DOCKED_WIDTH, center: 100 - DEFAULT_DOCKED_WIDTH - DEFAULT_RIGHT_DOCKED_WIDTH, right: DEFAULT_RIGHT_DOCKED_WIDTH });
   const containerRef = useRef<HTMLDivElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const [draggingHandle, setDraggingHandle] = useState<"left" | "right" | null>(null);
@@ -77,15 +90,10 @@ const AIRecommender = ({ initialInput, fillParent }: { initialInput?: string; fi
   useEffect(() => {
     const newLeftWidth = isDocked ? DEFAULT_DOCKED_WIDTH : DEFAULT_EXPANDED_WIDTH;
     const newRightWidth = isRightDocked ? DEFAULT_RIGHT_DOCKED_WIDTH : DEFAULT_RIGHT_EXPANDED_WIDTH;
-    setWidths(prev => {
-      // Adjust center width based on left and right changes
-      const leftAdjustment = newLeftWidth - prev.left;
-      const rightAdjustment = newRightWidth - prev.right;
-      return {
-        left: newLeftWidth,
-        center: Math.max(10, prev.center - leftAdjustment - rightAdjustment),
-        right: newRightWidth
-      };
+    setWidths({
+      left: newLeftWidth,
+      center: 100 - newLeftWidth - newRightWidth,
+      right: newRightWidth
     });
   }, [isDocked, isRightDocked, DEFAULT_DOCKED_WIDTH, DEFAULT_EXPANDED_WIDTH, DEFAULT_RIGHT_DOCKED_WIDTH, DEFAULT_RIGHT_EXPANDED_WIDTH]);
 
@@ -281,28 +289,30 @@ const AIRecommender = ({ initialInput, fillParent }: { initialInput?: string; fi
       const llmResponse = await generateAgentResponse(
         "finalAnalysis",
         { analysisResult: analysis },
-        `Analysis complete. Found ${count} matching products.`
+        `Analysis complete. Found ${count} matching products.`,
+        undefined,
+        searchSessionId
       );
       await streamAssistantMessage(llmResponse.content);
- 
+
       setState((prev) => ({ ...prev, analysisResult: analysis, isLoading: false }));
       setCurrentStep("initialInput");
- 
+
       toast({ title: "Analysis Complete", description: `Found ${count} matching products.` });
     } catch (error) {
       console.error("Analysis error:", error);
       const llmResponse = await generateAgentResponse(
         "analysisError",
         {},
-        "An error occurred during final analysis."
+        "An error occurred during final analysis.",
+        undefined,
+        searchSessionId
       );
       await streamAssistantMessage(llmResponse.content);
       setState((prev) => ({ ...prev, isLoading: false }));
       setCurrentStep("analysisError");
     }
-  }, [collectedData, state.productType, toast, streamAssistantMessage]);
- 
-  const handleShowSummaryAndProceed = useCallback(async () => {
+  }, [collectedData, state.productType, toast, streamAssistantMessage, searchSessionId]);  const handleShowSummaryAndProceed = useCallback(async () => {
     setState((prev) => ({ ...prev, isLoading: true }));
     try {
       const requirementsOnly = (({ productType, ...rest }) => rest)(collectedData);
@@ -313,11 +323,13 @@ const AIRecommender = ({ initialInput, fillParent }: { initialInput?: string; fi
       const summaryIntro = await generateAgentResponse(
         "showSummary",
         collectedData,
-        "Summary of requirements is ready."
+        "Summary of requirements is ready.",
+        undefined,
+        searchSessionId
       );
       await streamAssistantMessage(summaryIntro.content);
       addMessage({ type: "assistant", content: `\n\n${summaryContent}\n\n`, role: undefined });
- 
+
       setState((prev) => ({ ...prev, isLoading: false }));
       await performAnalysis();
     } catch (error) {
@@ -325,15 +337,15 @@ const AIRecommender = ({ initialInput, fillParent }: { initialInput?: string; fi
       const llmResponse = await generateAgentResponse(
         "showSummary",
         {},
-        "Error generating summary."
+        "Error generating summary.",
+        undefined,
+        searchSessionId
       );
       await streamAssistantMessage(llmResponse.content);
       setState((prev) => ({ ...prev, isLoading: false }));
       setCurrentStep("showSummary");
     }
-  }, [collectedData, performAnalysis, streamAssistantMessage, addMessage]);
- 
-  // --- New workflow-aware message handler ---
+  }, [collectedData, performAnalysis, streamAssistantMessage, addMessage, searchSessionId]);  // --- New workflow-aware message handler ---
   const handleSendMessage = useCallback(
     async (userInput: string) => {
       const trimmedInput = userInput.trim();
@@ -344,8 +356,8 @@ const AIRecommender = ({ initialInput, fillParent }: { initialInput?: string; fi
       setState((prev) => ({ ...prev, inputValue: "", isLoading: true }));
  
       try {
-        // Step 1: Classify user intent
-        const intentResult: IntentClassificationResult = await classifyIntent(trimmedInput);
+        // Step 1: Classify user intent (with session ID for isolation)
+        const intentResult: IntentClassificationResult = await classifyIntent(trimmedInput, searchSessionId);
         console.log('Intent classification result:', intentResult);
        
         // Handle knowledge questions (interrupts workflow)
@@ -357,7 +369,8 @@ const AIRecommender = ({ initialInput, fillParent }: { initialInput?: string; fi
               collectedData: collectedData
             },
             trimmedInput,
-            "knowledgeQuestion"
+            "knowledgeQuestion",
+            searchSessionId
           );
          
           await streamAssistantMessage(agentResponse.content);
@@ -391,7 +404,9 @@ const AIRecommender = ({ initialInput, fillParent }: { initialInput?: string; fi
             agentResponse = await generateAgentResponse(
               "greeting",
               {},
-              trimmedInput
+              trimmedInput,
+              undefined,
+              searchSessionId
             );
             await streamAssistantMessage(agentResponse.content);
             setCurrentStep("initialInput");
@@ -404,7 +419,7 @@ const AIRecommender = ({ initialInput, fillParent }: { initialInput?: string; fi
             try {
               const validation: ValidationResult = await validateRequirements(trimmedInput, undefined, searchSessionId);
               if (!validation.productType) {
-                agentResponse = await generateAgentResponse("initialInput", {}, "No product type detected.");
+                agentResponse = await generateAgentResponse("initialInput", {}, "No product type detected.", undefined, searchSessionId);
                 await streamAssistantMessage(agentResponse.content);
                 setCurrentStep("initialInput");
                 break;
@@ -434,7 +449,9 @@ const AIRecommender = ({ initialInput, fillParent }: { initialInput?: string; fi
                     productType: validation.productType,
                     requirements: flatRequirements
                   },
-                  `Product type detected: ${validation.productType}.`
+                  `Product type detected: ${validation.productType}.`,
+                  undefined,
+                  searchSessionId
                 );
                 await streamAssistantMessage(agentResponse.content);
                 // Use LLM nextStep if provided, otherwise fall back to awaitOptional
@@ -443,7 +460,7 @@ const AIRecommender = ({ initialInput, fillParent }: { initialInput?: string; fi
               }
             } catch (error) {
               console.error("Initial input error:", error);
-              agentResponse = await generateAgentResponse("default", {}, "Error during initial processing.");
+              agentResponse = await generateAgentResponse("default", {}, "Error during initial processing.", undefined, searchSessionId);
               await streamAssistantMessage(agentResponse.content);
               setCurrentStep("initialInput");
             }
@@ -461,14 +478,16 @@ const AIRecommender = ({ initialInput, fillParent }: { initialInput?: string; fi
                 agentResponse = await generateAgentResponse(
                   "awaitOptional",
                   { productType: state.productType },
-                  trimmedInput
+                  trimmedInput,
+                  undefined,
+                  searchSessionId
                 );
                 await streamAssistantMessage(agentResponse.content);
                
                 if (agentResponse.nextStep === "awaitAdvanced") {
                   setCurrentStep("awaitAdvanced");
                   // Discover parameters in the background for later use
-                  const parametersResult = await discoverAdvancedParameters(state.productType!);
+                  const parametersResult = await discoverAdvancedParameters(state.productType!, searchSessionId);
                   setAdvancedParameters(parametersResult);
                  
                   // Call backend again to get the formatted parameter display
@@ -478,7 +497,9 @@ const AIRecommender = ({ initialInput, fillParent }: { initialInput?: string; fi
                       productType: state.productType,
                       availableParameters: [], // Empty to trigger discovery in backend
                     },
-                    "show parameters" // Trigger parameter display
+                    "show parameters", // Trigger parameter display
+                    undefined,
+                    searchSessionId
                   );
                   await streamAssistantMessage(advancedResponse.content);
                 }
@@ -499,13 +520,15 @@ const AIRecommender = ({ initialInput, fillParent }: { initialInput?: string; fi
                 agentResponse = await generateAgentResponse(
                   "awaitOptional",
                   { productType: state.productType, updatedData },
-                  trimmedInput
+                  trimmedInput,
+                  undefined,
+                  searchSessionId
                 );
                 await streamAssistantMessage(agentResponse.content);
  
                 if (agentResponse.nextStep === "awaitAdvanced") {
                   // Discover parameters in the background for later use
-                  const parametersResult = await discoverAdvancedParameters(state.productType!);
+                  const parametersResult = await discoverAdvancedParameters(state.productType!, searchSessionId);
                   setAdvancedParameters(parametersResult);
                   setCurrentStep("awaitAdvanced");
                  
@@ -525,7 +548,7 @@ const AIRecommender = ({ initialInput, fillParent }: { initialInput?: string; fi
               }
             } catch (error) {
               console.error("Additional requirements error:", error);
-              agentResponse = await generateAgentResponse("awaitOptional", {}, "Error processing optional requirements.");
+              agentResponse = await generateAgentResponse("awaitOptional", {}, "Error processing optional requirements.", undefined, searchSessionId);
               await streamAssistantMessage(agentResponse.content);
               setCurrentStep("awaitOptional");
             }
@@ -592,7 +615,9 @@ const AIRecommender = ({ initialInput, fillParent }: { initialInput?: string; fi
                     totalSelected: selectionResult?.totalSelected || 0,
                     availableParameters: advancedParameters.uniqueParameters
                   },
-                  trimmedInput
+                  trimmedInput,
+                  undefined,
+                  searchSessionId
                 );
                 await streamAssistantMessage(agentResponse.content);
  
@@ -605,13 +630,15 @@ const AIRecommender = ({ initialInput, fillParent }: { initialInput?: string; fi
                 agentResponse = await generateAgentResponse(
                   "awaitAdvanced",
                   { productType: state.productType },
-                  trimmedInput
+                  trimmedInput,
+                  undefined,
+                  searchSessionId
                 );
                 await streamAssistantMessage(agentResponse.content);
               }
             } catch (error) {
               console.error("Advanced parameters error:", error);
-              agentResponse = await generateAgentResponse("awaitAdvanced", {}, "Error processing advanced parameters.");
+              agentResponse = await generateAgentResponse("awaitAdvanced", {}, "Error processing advanced parameters.", undefined, searchSessionId);
               await streamAssistantMessage(agentResponse.content);
             }
             setState((prev) => ({ ...prev, isLoading: false }));
@@ -641,7 +668,7 @@ const AIRecommender = ({ initialInput, fillParent }: { initialInput?: string; fi
             if (["rerun", "run", "runagain"].includes(normalizedInput)) {
               await performAnalysis();
             } else {
-              agentResponse = await generateAgentResponse("analysisError", {}, "Please type 'rerun' to try again.");
+              agentResponse = await generateAgentResponse("analysisError", {}, "Please type 'rerun' to try again.", undefined, searchSessionId);
               await streamAssistantMessage(agentResponse.content);
             }
             break;
@@ -658,7 +685,9 @@ const AIRecommender = ({ initialInput, fillParent }: { initialInput?: string; fi
                   const confirmationResponse = await generateAgentResponse(
                     "confirmAfterMissingInfo",
                     { productType: state.productType, collectedData },
-                    "User confirmed to proceed without providing missing mandatory fields."
+                    "User confirmed to proceed without providing missing mandatory fields.",
+                    undefined,
+                    searchSessionId
                   );
                   await streamAssistantMessage(confirmationResponse.content);
                   // Move to optional requirements step
@@ -683,7 +712,9 @@ const AIRecommender = ({ initialInput, fillParent }: { initialInput?: string; fi
                     agentResponse = await generateAgentResponse(
                       "confirmAfterMissingInfo",
                       { productType: state.productType, collectedData: updatedData },
-                      "All mandatory requirements provided."
+                      "All mandatory requirements provided.",
+                      undefined,
+                      searchSessionId
                     );
                     await streamAssistantMessage(agentResponse.content);
  
@@ -697,12 +728,12 @@ const AIRecommender = ({ initialInput, fillParent }: { initialInput?: string; fi
                 }
               } catch (error) {
                 console.error("Missing info processing error:", error);
-                agentResponse = await generateAgentResponse("default", {}, "Error processing your input.");
+                agentResponse = await generateAgentResponse("default", {}, "Error processing your input.", undefined, searchSessionId);
                 await streamAssistantMessage(agentResponse.content);
               }
             } else {
               // Default conversation handling
-              agentResponse = await generateAgentResponse("default", {}, trimmedInput);
+              agentResponse = await generateAgentResponse("default", {}, trimmedInput, undefined, searchSessionId);
               await streamAssistantMessage(agentResponse.content);
             }
           }
@@ -757,10 +788,37 @@ const AIRecommender = ({ initialInput, fillParent }: { initialInput?: string; fi
       className={`flex flex-col ${fillParent ? 'h-full' : 'h-screen'} bg-gray-50 dark:bg-zinc-900 text-foreground`}
       ref={containerRef}
     >
+      {/* Left corner dock button - positioned below header */}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="fixed top-34 left-4 z-50 bg-background/80 backdrop-blur-sm border shadow-lg hover:bg-background/90"
+        onClick={() => setIsDocked(!isDocked)}
+        aria-label={isDocked ? "Expand left panel" : "Collapse left panel"}
+      >
+        {isDocked ? <ChevronRight /> : <ChevronLeft />}
+      </Button>
+
+      {/* Right corner dock button - positioned below header */}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="fixed top-35 right-4 z-50 bg-background/80 backdrop-blur-sm border shadow-lg hover:bg-background/90"
+        onClick={() => setIsRightDocked(!isRightDocked)}
+        aria-label={isRightDocked ? "Expand right panel" : "Collapse right panel"}
+      >
+        {isRightDocked ? <ChevronLeft /> : <ChevronRight />}
+      </Button>
+
       <div className="flex flex-1 overflow-hidden">
         <div
           className="h-full flex flex-col relative transition-all duration-150 ease-in-out"
-          style={{ width: `${widths.left}%`, minWidth: "7%", willChange: "width" }}
+          style={{ 
+            width: `${widths.left}%`, 
+            minWidth: widths.left === 0 ? "0%" : "7%", 
+            willChange: "width",
+            overflow: "hidden"
+          }}
         >
           <LeftSidebar
             validationResult={state.validationResult}
@@ -774,19 +832,21 @@ const AIRecommender = ({ initialInput, fillParent }: { initialInput?: string; fi
           />
         </div>
  
-        <div
-          className={`w-1.5 cursor-col-resize transition-colors duration-150 ease-in-out ${
-            draggingHandle === "left"
-              ? "bg-blue-500"
-              : "bg-border hover:bg-blue-500"
-          }`}
-          style={{ height: "100%", zIndex: 20 }}
-          onMouseDown={(e) => handleMouseDown(e, "left")}
-        />
+        {widths.left > 0 && (
+          <div
+            className={`w-1.5 cursor-col-resize transition-colors duration-150 ease-in-out ${
+              draggingHandle === "left"
+                ? "bg-blue-500"
+                : "bg-border hover:bg-blue-500"
+            }`}
+            style={{ height: "100%", zIndex: 20 }}
+            onMouseDown={(e) => handleMouseDown(e, "left")}
+          />
+        )}
  
         <div
           className="h-full transition-all duration-150 ease-in-out overflow-auto flex flex-col"
-          style={{ width: `${widths.center}%`, minWidth: "10%", willChange: "width" }}
+          style={{ width: `${100 - (widths.left > 0 ? widths.left : 0) - (widths.right > 0 ? widths.right : 0)}%`, minWidth: "10%", willChange: "width" }}
         >
           <ChatInterface
             messages={state.messages}
@@ -801,22 +861,30 @@ const AIRecommender = ({ initialInput, fillParent }: { initialInput?: string; fi
             collectedData={collectedData}
             vendorAnalysisComplete={!!state.analysisResult}
             onRetry={handleRetry}
+            searchSessionId={searchSessionId}
           />
         </div>
  
-        <div
-          className={`w-1.5 cursor-col-resize transition-colors duration-150 ease-in-out ${
-            draggingHandle === "right"
-              ? "bg-blue-500"
-              : "bg-border hover:bg-blue-500"
-          }`}
-          style={{ height: "100%", zIndex: 20 }}
-          onMouseDown={(e) => handleMouseDown(e, "right")}
-        />
+        {widths.right > 0 && (
+          <div
+            className={`w-1.5 cursor-col-resize transition-colors duration-150 ease-in-out ${
+              draggingHandle === "right"
+                ? "bg-blue-500"
+                : "bg-border hover:bg-blue-500"
+            }`}
+            style={{ height: "100%", zIndex: 20 }}
+            onMouseDown={(e) => handleMouseDown(e, "right")}
+          />
+        )}
  
         <div
           className="h-full transition-all duration-150 ease-in-out"
-          style={{ width: `${widths.right}%`, minWidth: "7%", willChange: "width" }}
+          style={{ 
+            width: `${widths.right}%`, 
+            minWidth: widths.right === 0 ? "0%" : "7%", 
+            willChange: "width",
+            overflow: "hidden"
+          }}
         >
           <RightPanel
             analysisResult={state.analysisResult}

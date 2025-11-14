@@ -4,7 +4,7 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AnalysisResult, RequirementSchema, ValidationResult, AnalysisImageResult, ProductImage, VendorLogo } from "./types";
-import { getVendors, getProductPriceReview, submitFeedback as submitFeedbackApi, getSubmodelMapping, getAnalysisProductImages } from "./api";
+import { getVendors, getProductPriceReview, submitFeedback as submitFeedbackApi, getSubmodelMapping, getAnalysisProductImages, BASE_URL } from "./api";
 import { Trophy, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -522,20 +522,10 @@ const RightPanel: React.FC<RightPanelProps> = ({
   if (!finalAnalysisResult?.vendorAnalysis?.vendorMatches?.length) {
     return (
       <div className="w-full h-full flex flex-col bg-background text-foreground border-l border-border overflow-hidden sticky top-0 right-0 z-20" style={{ minWidth: 0 }}>
-        {/* Dock/Expand button for right panel */}
+        {/* Header space - dock button moved to corner */}
         <div className="flex items-center justify-end py-4 px-3 flex-shrink-0">
-  <button
-    className="ml-auto bg-transparent border-none cursor-pointer"
-    onClick={() => setIsDocked(!isDocked)}
-    aria-label={isDocked ? "Expand panel" : "Collapse panel"}
-  >
-    {isDocked ? (
-      <ChevronLeft size={24} />
-    ) : (
-      <ChevronRight size={24} />
-    )}
-  </button>
-</div>
+          {/* Dock button moved to corner */}
+        </div>
         <div style={{ flex: 1 }} />
         <style>{`
           .custom-no-scrollbar::-webkit-scrollbar {
@@ -652,7 +642,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
     const normalizedVendorName = normalizeVendorName(vendorName);
     const logoUrl = vendorLogoMap[normalizedVendorName];
     if (!logoUrl) return null;
-    const safeUrl = logoUrl.startsWith("/") ? `http://localhost:5000${logoUrl}` : logoUrl;
+    const safeUrl = logoUrl.startsWith("/") ? `${BASE_URL}${logoUrl}` : logoUrl;
     return (
       <img
         src={safeUrl}
@@ -678,20 +668,10 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
   return (
     <div className="w-full h-full flex flex-col bg-background text-foreground border-l border-border sticky top-0 right-0 z-20" style={{ minWidth: 0, position: "relative" }}>
-      {/* Dock/Expand button for right panel */}
+      {/* Header space - dock button moved to corner */}
       <div className="flex items-center justify-end py-4 px-3 flex-shrink-0">
-  <button
-    className="ml-auto bg-transparent border-none cursor-pointer"
-    onClick={() => setIsDocked(!isDocked)}
-    aria-label={isDocked ? "Expand panel" : "Collapse panel"}
-  >
-    {isDocked ? (
-      <ChevronLeft size={24} />
-    ) : (
-      <ChevronRight size={24} />
-    )}
-  </button>
-</div>
+        {/* Dock button moved to corner */}
+      </div>
 
 
       {/* Docked view: show compact summary/icon */}
@@ -777,7 +757,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                                 ) : productImgUrl ? (
                                   <div className="relative flex-shrink-0">
                                     <img
-                                      src={productImgUrl.startsWith("/") ? `http://localhost:5000${productImgUrl}` : productImgUrl}
+                                      src={productImgUrl.startsWith("/") ? `${BASE_URL}${productImgUrl}` : productImgUrl}
                                       alt={`${product.productName} thumbnail`}
                                       onMouseEnter={() => setHoveredImage(productImgUrl)}
                                       onMouseLeave={() => setHoveredImage(null)}
@@ -928,7 +908,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                                 {/* Product image (not vendor logo) */}
                                 {productImgUrl ? (
                                   <img
-                                    src={productImgUrl.startsWith("/") ? `http://localhost:5000${productImgUrl}` : productImgUrl}
+                                    src={productImgUrl.startsWith("/") ? `${BASE_URL}${productImgUrl}` : productImgUrl}
                                     alt={`${productMatch.productName} thumbnail`}
                                     onMouseEnter={() => setHoveredImage(productImgUrl)}
                                     onMouseLeave={() => setHoveredImage(null)}
@@ -1035,7 +1015,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
           className="dark:bg-slate-800/98 dark:border-slate-600"
         >
           <img
-            src={hoveredImage.startsWith("/") ? `http://localhost:5000${hoveredImage}` : hoveredImage}
+            src={hoveredImage.startsWith("/") ? `${BASE_URL}${hoveredImage}` : hoveredImage}
             alt="Product preview"
             style={{
               maxWidth: "550px",

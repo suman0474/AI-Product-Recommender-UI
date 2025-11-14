@@ -49,7 +49,7 @@ const Login = () => {
                 Welcome Back
               </h1>
               <p className="text-muted-foreground mt-2 text-base">
-                Sign in to access Controls Systems Recommender
+                Sign in to access EnGenie
               </p>
             </div>
           </div>

@@ -5,7 +5,7 @@ import { Button } from '../components/ui/button';
 import { Brain, CheckCircle, XCircle,ArrowLeft } from 'lucide-react';
 import { GlassCard, GlassCardContent, GlassCardHeader, GlassCardTitle } from '../components/ui/glass-card';
 
-const API_BASE_URL = 'http://localhost:5000';
+const API_BASE_URL = 'https://zestful-solace-production-ea2e.up.railway.app';
 
 const AdminDashboard = () => {
   const { user, isLoading: authLoading, isAuthenticated } = useAuth();

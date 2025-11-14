@@ -97,7 +97,7 @@ const Signup = () => {
                 Create Account
               </h1>
               <p className="text-muted-foreground mt-2 text-base">
-                Join Controls Systems Recommender today
+                Join EnGenie today
               </p>
             </div>
           </div>

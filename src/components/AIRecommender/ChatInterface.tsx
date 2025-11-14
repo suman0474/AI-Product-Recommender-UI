@@ -31,6 +31,7 @@ interface ChatInterfaceProps {
   collectedData: { [key: string]: string };
   vendorAnalysisComplete: boolean;
   onRetry: () => void;
+  searchSessionId?: string; // Optional session ID for debugging
 }
 
 const ChatInterface = ({
@@ -46,6 +47,7 @@ const ChatInterface = ({
   collectedData,
   vendorAnalysisComplete,
   onRetry,
+  searchSessionId,
 }: ChatInterfaceProps) => {
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -159,6 +161,12 @@ const ChatInterface = ({
 
   return (
     <div className="flex-1 flex flex-col h-full bg-background overflow-auto y">
+      {/* Debug session indicator - can be removed in production */}
+      {searchSessionId && (
+        <div className="text-xs text-gray-500 px-4 py-1 bg-gray-50 border-b">
+          Session: {searchSessionId.slice(-8)}
+        </div>
+      )}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-no-scrollbar">
         {messages.length === 0 ? (
           <div className="text-center p-6">
@@ -256,6 +264,7 @@ const ChatInterface = ({
         </div>
       )}
 
+      {/*
       {messages.length === 0 && (
         <div className="flex flex-wrap justify-center items-center gap-2 space-x-2 p-2 border-t border-border bg-background">
           {sampleInputs.map(({ label }) => (
@@ -271,6 +280,7 @@ const ChatInterface = ({
           ))}
         </div>
       )}
+      */}
 
       <div className="border-t border-border p-4 bg-background">
         <div className="flex space-x-3">
@@ -280,8 +290,9 @@ const ChatInterface = ({
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            className="flex-1 min-h-[60px] resize-none bg-secondary/50 border border-border/50 focus:border-ai-primary/50 focus:ring-ai-primary/20"
+            className="flex-1 min-h-[60px] resize-none bg-secondary/50 border-2 border-black focus:border-black focus:ring-0 focus:ring-offset-0 focus:outline-none focus:shadow-none hover:border-black active:border-black [&:focus]:!border-black [&:focus]:!ring-0 [&:focus]:!ring-offset-0 [&:focus]:!shadow-none [&:focus]:!outline-none"
             disabled={currentStep === 'finalAnalysis'}
+            style={{ boxShadow: 'none' }}
           />
           <Button
             onClick={handleSend}

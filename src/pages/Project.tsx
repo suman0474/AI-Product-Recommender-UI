@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/tooltip";
 import AIRecommender from "@/components/AIRecommender";
 import { useAuth } from '@/contexts/AuthContext';
+import '../components/TabsLayout.css';
 
 interface IdentifiedInstrument {
   category: string;
@@ -151,12 +152,12 @@ const Project = () => {
     }
   };
 
-  const handleRun = (instrument: IdentifiedInstrument) => {
-    addSearchTab(instrument.sampleInput, instrument.category);
+  const handleRun = (instrument: IdentifiedInstrument, index: number) => {
+    addSearchTab(instrument.sampleInput, `${index + 1}. ${instrument.category}`);
   };
 
-  const handleRunAccessory = (accessory: IdentifiedAccessory) => {
-    addSearchTab(accessory.sampleInput, accessory.category);
+  const handleRunAccessory = (accessory: IdentifiedAccessory, index: number) => {
+    addSearchTab(accessory.sampleInput, `${index + 1}. ${accessory.category}`);
   };
 
   const handleNewProject = () => {
@@ -238,33 +239,37 @@ const Project = () => {
             </div>
 
             {searchTabs.length > 0 && (
-              <Tabs value={activeTab} onValueChange={handleTabChange} className="w-auto">
-                <TabsList className="flex items-center gap-2 bg-transparent p-0">
-                  <TabsTrigger
-                    value="project"
-                    className="rounded-lg px-4 py-2 text-base font-bold text-foreground border-2 border-border data-[state=active]:shadow-md"
-                  >
-                    Project
-                  </TabsTrigger>
-                  {searchTabs.map((tab) => (
-                    <div key={tab.id} className="flex items-center">
+              <div className="max-w-[calc(100vw-300px)] min-w-0">
+                <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+                  <TabsList className="w-full bg-transparent p-0 h-auto">
+                    <div className="flex items-center gap-2 overflow-hidden">
                       <TabsTrigger
-                        value={tab.id}
-                        className="rounded-lg px-3 py-1 text-sm data-[state=active]:bg-secondary data-[state=active]:text-secondary-foreground"
+                        value="project"
+                        className="rounded-lg px-4 py-2 text-base font-bold text-foreground border-2 border-border data-[state=active]:shadow-md whitespace-nowrap flex-shrink-0"
                       >
-                        {tab.title}
+                        Project
                       </TabsTrigger>
-                      <button
-                        onClick={() => closeSearchTab(tab.id)}
-                        className="ml-1 text-muted-foreground hover:text-foreground text-lg"
-                        aria-label={`Close ${tab.title}`}
-                      >
-                        ×
-                      </button>
+                      {searchTabs.map((tab, index) => (
+                        <div key={tab.id} className="flex items-center min-w-0 flex-shrink">
+                          <TabsTrigger
+                            value={tab.id}
+                            className="rounded-lg px-3 py-1 text-sm data-[state=active]:bg-secondary data-[state=active]:text-secondary-foreground min-w-0"
+                          >
+                            <span className="truncate block w-full">{tab.title}</span>
+                          </TabsTrigger>
+                          <button
+                            onClick={() => closeSearchTab(tab.id)}
+                            className="ml-1 text-muted-foreground hover:text-foreground text-lg flex-shrink-0"
+                            aria-label={`Close ${tab.title}`}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </TabsList>
-              </Tabs>
+                  </TabsList>
+                </Tabs>
+              </div>
             )}
           </div>
 
@@ -358,28 +363,35 @@ const Project = () => {
             >
               <div className="mx-auto max-w-[800px] px-6 min-h-full flex items-center justify-center">
                 <div className="w-full py-6">
-          {/* Header - Only show when no search tabs are open */}
-          {searchTabs.length === 0 && (
-  <div className="text-center mb-6">
-    <h1 className="text-4xl font-bold text-foreground">
-      Controls Systems Recommender
-    </h1>
-  </div>
-)}
-<div>
-<h1></h1>
-</div>
-<div>
+          {/* Header */}
+          <div className="text-center mb-6">
+            <div className="flex items-center justify-center gap-4 mb-4">
+              <div className="w-16 h-16 rounded-full overflow-hidden shadow">
+                <video
+                  src="/animation.mp4"
+                  autoPlay
+                  muted
+                  playsInline
+                  disablePictureInPicture
+                  controls={false}
+                  onContextMenu={(e) => e.preventDefault()}
+                  className="w-full h-full object-cover pointer-events-none"
+                />
+              </div>
+              <h1 className="text-4xl font-bold text-foreground">
+                EnGenie
+              </h1>
+            </div>
+          </div>
 
-</div>
-          {searchTabs.length === 0 && !showResults && (
+          {!showResults && (
             <div className="text-center space-y-4 mb-8">
               <h2 className="text-3xl font-bold">
                 What are your requirements?
               </h2>
-              <p className="text-muted-foreground text-lg">
+              {/* <p className="text-muted-foreground text-lg">
                 Describe your Industrial Process Control System needs
-              </p>
+              </p> */}
            
             </div>
           )}
@@ -393,8 +405,9 @@ const Project = () => {
                   value={requirements}
                   onChange={(e) => setRequirements(e.target.value)}
                   onKeyDown={handleKeyPress}
-                  className="min-h-[400px] text-base resize-none rounded-xl"
+                  className="min-h-[400px] text-base resize-none rounded-xl bg-secondary/50 border-2 border-gray-600 focus:border-gray-600 focus:ring-0 focus:ring-offset-0 focus:outline-none focus:shadow-none hover:border-gray-600 active:border-gray-600 [&:focus]:!border-gray-600 [&:focus]:!ring-0 [&:focus]:!ring-offset-0 [&:focus]:!shadow-none [&:focus]:!outline-none"
                   disabled={isLoading}
+                  style={{ boxShadow: 'none' }}
                 />
                 
                 <div className="flex justify-end">
@@ -439,14 +452,14 @@ const Project = () => {
                       <div className="flex items-start justify-between">
                         <div className="space-y-1">
                           <h3 className="text-xl font-semibold">
-                            {instrument.category}
+                            {index + 1}. {instrument.category}
                           </h3>
                           <p className="text-muted-foreground">
                             {instrument.productName}
                           </p>
                         </div>
                         <Button
-                          onClick={() => handleRun(instrument)}
+                          onClick={() => handleRun(instrument, index)}
                           className="btn-primary rounded-xl px-6"
                         >
                           <Play className="mr-2 h-4 w-4" />
@@ -497,14 +510,14 @@ const Project = () => {
                       <div className="flex items-start justify-between">
                         <div className="space-y-1">
                           <h3 className="text-xl font-semibold">
-                            {accessory.category}
+                            {index + 1}. {accessory.category}
                           </h3>
                           <p className="text-muted-foreground">
                             {accessory.accessoryName}
                           </p>
                         </div>
                         <Button
-                          onClick={() => handleRunAccessory(accessory)}
+                          onClick={() => handleRunAccessory(accessory, index)}
                           className="btn-primary rounded-xl px-6"
                         >
                           <Play className="mr-2 h-4 w-4" />

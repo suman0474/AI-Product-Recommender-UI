@@ -62,7 +62,7 @@ const Landing = () => {
           <h1 className="text-5xl md:text-6xl font-extrabold mb-6">
             Welcome to{' '}
             <span className="text-gradient inline-block">
-              Controls Systems Recommender
+              EnGenie
             </span>
           </h1>
           <p className="text-xl text-muted-foreground max-w-3xl mx-auto mb-10">
@@ -141,7 +141,7 @@ const Landing = () => {
             Ready to Find Your Perfect Product?
           </h2>
           <p className="text-xl text-muted-foreground mb-8">
-            Join thousands of engineers who trust our Controls Systems Recommender. Product type detection will start automatically upon entering your requirements.
+            Join thousands of engineers who trust our EnGenie. Product type detection will start automatically upon entering your requirements.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button className="btn-primary px-6 py-3 inline-flex items-center justify-center" onClick={() => navigate('/signup')}>
@@ -157,7 +157,7 @@ const Landing = () => {
 
       {/* Footer */}
       <footer className="border-t border-border py-8 text-muted-foreground text-sm text-center">
-        © 2024 AI Product Recommender. Powered by advanced AI pipeline.
+        © 2024 EnGenie. Powered by advanced AI pipeline.
       </footer>
     </div>
   );
