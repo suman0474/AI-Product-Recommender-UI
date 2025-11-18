@@ -18,8 +18,8 @@ interface ChatInterfaceProps {
     | "greeting"
     | "initialInput"
     | "awaitMissingInfo"
-    | "awaitOptional"
-    | "awaitAdvanced"
+    | "awaitAdditionalAndLatestSpecs"
+    | "awaitAdvancedSpecs"
     | "confirmAfterMissingInfo"
     | "showSummary"
     | "finalConfirmation"
@@ -72,6 +72,42 @@ const ChatInterface = ({
       .replace(/-/g, " ")
       .replace(/\b\w/g, (l) => l.toUpperCase());
 
+  const formatTimestamp = (ts: any) => {
+    if (!ts) return "";
+    // If already a Date
+    if (ts instanceof Date) {
+      try {
+        return ts.toLocaleTimeString();
+      } catch (e) {
+        return ts.toString();
+      }
+    }
+
+    // If numeric (epoch ms)
+    if (typeof ts === "number") {
+      const d = new Date(ts);
+      return isNaN(d.getTime()) ? String(ts) : d.toLocaleTimeString();
+    }
+
+    // If ISO/string, try to parse
+    if (typeof ts === "string") {
+      const parsed = Date.parse(ts);
+      if (!isNaN(parsed)) {
+        return new Date(parsed).toLocaleTimeString();
+      }
+
+      // If string isn't parseable, return as-is (fallback)
+      return ts;
+    }
+
+    // Unknown type: fallback to string
+    try {
+      return String(ts);
+    } catch (e) {
+      return "";
+    }
+  };
+
   const handleSend = () => {
     const trimmedInput = inputValue.trim();
     if (!trimmedInput) {
@@ -94,6 +130,8 @@ const ChatInterface = ({
       handleSend();
     }
   };
+
+
 
   const handleSampleClick = (sampleText: string) => {
     setInputValue(sampleText);
@@ -130,9 +168,9 @@ const ChatInterface = ({
         return "";
       case "awaitMissingInfo":
         return "";
-      case "awaitOptional":
+      case "awaitAdditionalAndLatestSpecs":
         return "";
-      case "awaitAdvanced":
+      case "awaitAdvancedSpecs":
         return "";
       case "showSummary":
       case "analysisError":
@@ -160,13 +198,13 @@ const ChatInterface = ({
   ];
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-background overflow-auto y">
-      {/* Debug session indicator - can be removed in production */}
+    <div className="flex-1 flex flex-col h-full bg-background">
+      {/* Debug session indicator - can be removed in production
       {searchSessionId && (
         <div className="text-xs text-gray-500 px-4 py-1 bg-gray-50 border-b">
           Session: {searchSessionId.slice(-8)}
         </div>
-      )}
+      )} */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-no-scrollbar">
         {messages.length === 0 ? (
           <div className="text-center p-6">
@@ -220,7 +258,7 @@ const ChatInterface = ({
                       message.type === "user" ? "text-right" : ""
                     }`}
                   >
-                    {message.timestamp.toLocaleTimeString()}
+                    {formatTimestamp(message.timestamp)}
                   </p>
                 </div>
               </div>
@@ -284,27 +322,23 @@ const ChatInterface = ({
 
       <div className="border-t border-border p-4 bg-background">
         <div className="flex space-x-3">
-          <Textarea
+          <textarea
             ref={textareaRef}
-            placeholder={getPlaceholderText()}
+            placeholder="Type your message here..."
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            className="flex-1 min-h-[60px] resize-none bg-secondary/50 border-2 border-black focus:border-black focus:ring-0 focus:ring-offset-0 focus:outline-none focus:shadow-none hover:border-black active:border-black [&:focus]:!border-black [&:focus]:!ring-0 [&:focus]:!ring-offset-0 [&:focus]:!shadow-none [&:focus]:!outline-none"
-            disabled={currentStep === 'finalAnalysis'}
-            style={{ boxShadow: 'none' }}
+            className="flex-1 min-h-[60px] resize-none bg-white border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+            style={{ 
+              fontSize: '16px',
+              fontFamily: 'inherit',
+              lineHeight: '1.5'
+            }}
           />
           <Button
             onClick={handleSend}
-            disabled={
-              !inputValue.trim() || isLoading || currentStep === "finalAnalysis"
-            }
-            className={
-              "w-14 h-14 p-0 rounded-full flex items-center justify-center bg-ai-primary " +
-              "hover:bg-ai-blue active:bg-ai-blue transition-colors duration-200 " +
-              "shadow-lg border-2 border-ai-primary/80 " +
-              "focus:ring-2 focus:ring-ai-blue focus:outline-none"
-            }
+            disabled={!inputValue.trim() || isLoading}
+            className="w-14 h-14 p-0 rounded-full flex items-center justify-center btn-primary"
           >
             {isLoading ? (
               <Loader2 className="h-6 w-6 animate-spin text-white" />

@@ -157,6 +157,8 @@ interface LeftSidebarProps {
   isDocked: boolean;
   setIsDocked: React.Dispatch<React.SetStateAction<boolean>>;
   hideProfile?: boolean;
+  fieldDescriptions?: Record<string, string>;
+  onFieldDescriptionsChange?: (descriptions: Record<string, string>) => void;
 }
 
 // Main rendering function
@@ -170,8 +172,10 @@ const LeftSidebar = ({
   isDocked,
   setIsDocked,
   hideProfile = false,
+  fieldDescriptions: savedFieldDescriptions,
+  onFieldDescriptionsChange,
 }: LeftSidebarProps) => {
-  const [fieldDescriptions, setFieldDescriptions] = useState<Record<string, string>>({});
+  const [fieldDescriptions, setFieldDescriptions] = useState<Record<string, string>>(savedFieldDescriptions || {});
   const hasAutoUndocked = useRef(false);
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -188,6 +192,13 @@ const LeftSidebar = ({
   const profileEmail = user?.email || "No email";
 
   useEffect(() => {
+    // Update fieldDescriptions when savedFieldDescriptions prop changes
+    if (savedFieldDescriptions && Object.keys(savedFieldDescriptions).length > 0) {
+      console.log('Using saved field descriptions:', Object.keys(savedFieldDescriptions).length, 'fields');
+      setFieldDescriptions(savedFieldDescriptions);
+      return;
+    }
+
     async function fetchAllDescriptions() {
       if (!requirementSchema || !currentProductType) return;
       const allKeys = [
@@ -196,6 +207,7 @@ const LeftSidebar = ({
       ];
       if (allKeys.length === 0) return;
 
+      console.log('No saved descriptions found, fetching from API for', allKeys.length, 'fields');
       try {
         const promises = allKeys.map((key) => getFieldDescription(key, currentProductType));
         const results = await Promise.allSettled(promises);
@@ -206,12 +218,18 @@ const LeftSidebar = ({
             result.status === "fulfilled" ? result.value.description : "No description available";
         });
         setFieldDescriptions(newDescriptions);
+        console.log('Field descriptions fetched from API:', Object.keys(newDescriptions).length, 'fields');
+        
+        // Notify parent component about the new field descriptions
+        if (onFieldDescriptionsChange) {
+          onFieldDescriptionsChange(newDescriptions);
+        }
       } catch (err) {
         console.error("Error fetching field descriptions", err);
       }
     }
     fetchAllDescriptions();
-  }, [requirementSchema, currentProductType]);
+  }, [requirementSchema, currentProductType, savedFieldDescriptions]);
 
 
   return (

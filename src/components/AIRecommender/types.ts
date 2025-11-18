@@ -45,6 +45,7 @@ export interface VendorAnalysis {
 
 // ADD imageUrl HERE:
 export interface RankedProduct {
+  modelFamily: any;
   productType: string;
   rank: number;
   productName: string;
@@ -98,7 +99,7 @@ export interface UserCredentials {
 // New types for step-based workflow
 export interface IntentClassificationResult {
   intent: "greeting" | "knowledgeQuestion" | "productRequirements" | "workflow" | "chitchat" | "other";
-  nextStep: "greeting" | "initialInput" | "awaitOptional" | "awaitAdvanced" | "showSummary" | "finalAnalysis" | null;
+  nextStep: "greeting" | "initialInput" | "awaitAdditionalAndLatestSpecs" | "awaitAdvancedSpecs" | "showSummary" | "finalAnalysis" | null;
   resumeWorkflow?: boolean;
 }
 
@@ -112,8 +113,8 @@ export type WorkflowStep =
   | "greeting"
   | "initialInput" 
   | "awaitMissingInfo"
-  | "awaitOptional" 
-  | "awaitAdvanced"
+  | "awaitAdditionalAndLatestSpecs"
+  | "awaitAdvancedSpecs"
   | "confirmAfterMissingInfo"
   | "showSummary" 
   | "finalAnalysis" 
@@ -152,6 +153,7 @@ export interface AdvancedParametersSelection {
 // Instrument Identification types
 export interface IdentifiedInstrument {
   category: string;
+  quantity?: number;
   productName: string;
   specifications: Record<string, string>;
   sampleInput: string;
@@ -159,12 +161,14 @@ export interface IdentifiedInstrument {
 
 export interface IdentifiedAccessory {
   category: string;
+  quantity?: number;
   accessoryName: string;
   specifications: Record<string, string>;
   sampleInput: string;
 }
 
 export interface InstrumentIdentificationResult {
+  projectName?: string;
   instruments: IdentifiedInstrument[];
   accessories?: IdentifiedAccessory[];
   summary: string;

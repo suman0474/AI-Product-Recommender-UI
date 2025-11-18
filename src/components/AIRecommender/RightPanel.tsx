@@ -4,7 +4,7 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AnalysisResult, RequirementSchema, ValidationResult, AnalysisImageResult, ProductImage, VendorLogo } from "./types";
-import { getVendors, getProductPriceReview, submitFeedback as submitFeedbackApi, getSubmodelMapping, getAnalysisProductImages, BASE_URL } from "./api";
+import { getProductPriceReview, submitFeedback as submitFeedbackApi, BASE_URL } from "./api";
 import { Trophy, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,6 +12,15 @@ import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
 import "./ImageComponents.css";
 
+const cleanImageUrl = (url: string): string => {
+    if (!url) return "";
+    // Check and remove the non-standard x-raw-image:/// scheme
+    const prefix = "x-raw-image:///";
+    if (url.startsWith(prefix)) {
+        return url.substring(prefix.length);
+    }
+    return url;
+};
 // Type that allows images to be either objects or strings
 type VendorImage = { fileName: string; url: string; productKey?: string } | string;
 type VendorInfo = { name: string; logoUrl: string | null; images: VendorImage[] };
@@ -38,39 +47,45 @@ const ImageGallery: React.FC<ImageGalleryProps> = ({ images, isOpen, onClose, pr
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-80 z-50 flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-slate-800 max-w-6xl max-h-[90vh] rounded-lg overflow-hidden">
-        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-          <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">{productName} - All Images</h3>
-          <button 
-            onClick={onClose}
-            className="text-2xl font-bold text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-          >
-            ×
-          </button>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4 max-h-[70vh] overflow-y-auto">
-          {images.map((image, index) => (
-            <div key={index} className="bg-gray-50 dark:bg-gray-700 rounded-lg overflow-hidden">
-              <img 
-                src={image.url} 
-                alt={image.title}
-                className="w-full h-48 object-cover"
-              />
-              <div className="p-3">
-                <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{image.title}</p>
-                <div className="flex items-center justify-between mt-2">
-                  <span className="text-xs px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded">{getQualityBadge(image.source)}</span>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">{image.domain}</span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
+    <div className="fixed inset-0 bg-black bg-opacity-80 z-50 flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-slate-800 max-w-6xl max-h-[90vh] rounded-lg overflow-hidden">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+          <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">{productName} - All Images</h3>
+          <button 
+            onClick={onClose}
+            className="text-2xl font-bold text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+          >
+            ×
+          </button>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4 max-h-[70vh] overflow-y-auto">
+          {images.map((image, index) => {
+              // --- FIX APPLIED HERE for ImageGallery ---
+              const cleanUrl = cleanImageUrl(image.url);
+              const finalSrc = cleanUrl.startsWith("/") ? `${BASE_URL}${cleanUrl}` : cleanUrl;
+              // ------------------------------------------
+
+              return (
+              <div key={index} className="bg-gray-50 dark:bg-gray-700 rounded-lg overflow-hidden">
+              <img 
+                src={finalSrc} 
+                alt={image.title}
+                className="w-full h-48 object-cover"
+              />
+              <div className="p-3">
+                <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{image.title}</p>
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-xs px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded">{getQualityBadge(image.source)}</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">{image.domain}</span>
+                </div>
+              </div>
+            </div>
+          );})}
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export type RightPanelProps = {
@@ -105,10 +120,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const [vendors, setVendors] = useState<VendorInfo[]>([]);
   const [hoveredImage, setHoveredImage] = useState<string | null>(null);
   const [priceReviewMap, setPriceReviewMap] = useState<Record<string, PriceReview>>({});
-  const [submodelMapping, setSubmodelMapping] = useState<Record<string, string>>({});
-  // New state for analysis images
+  // Use only embedded analysis images (no external fetching)
   const [analysisImages, setAnalysisImages] = useState<Record<string, AnalysisImageResult>>({});
-  const [loadingImages, setLoadingImages] = useState<Record<string, boolean>>({});
   const [imageGalleryOpen, setImageGalleryOpen] = useState<{ images: ProductImage[]; productName: string } | null>(null);
   const hasAutoUndocked = useRef(false);
   const { toast } = useToast();
@@ -126,26 +139,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const getProductKey = (vendor: string, productName: string) => `${vendor}-${productName}`;
 
   // Function to fetch images for analysis results
-  const fetchAnalysisImages = React.useCallback(async (
-    vendor: string,
-    productType: string,
-    productName: string,
-    modelFamilies: string[]
-  ) => {
-    const key = `${vendor}-${productName}`;
-    if (analysisImages[key] || loadingImages[key]) return;
-
-    setLoadingImages(prev => ({ ...prev, [key]: true }));
-    
-    try {
-      const imageResult = await getAnalysisProductImages(vendor, productType, productName, modelFamilies);
-      setAnalysisImages(prev => ({ ...prev, [key]: imageResult }));
-    } catch (error) {
-      console.error(`Failed to fetch images for ${vendor} ${productName}:`, error);
-    } finally {
-      setLoadingImages(prev => ({ ...prev, [key]: false }));
-    }
-  }, [analysisImages, loadingImages]);
+  // No external fetching: analysisImages will be prefilled from embedded project data when present
 
   const setFeedbackType = (key: string, type: FeedbackType) => {
     setFeedbackState((prev) => ({
@@ -186,82 +180,68 @@ const RightPanel: React.FC<RightPanelProps> = ({
   };
 
   useEffect(() => {
-    // Only fetch vendors ONCE after analysis is complete with ranked products
+    // Prefer vendor logos/images embedded in the analysisResult (for saved projects)
     if (!analysisResult?.overallRanking?.rankedProducts || vendors.length > 0) return;
-    
-    // Extract unique vendor names from analysis results
-    const uniqueVendors = Array.from(
-      new Set(
-        analysisResult.overallRanking.rankedProducts
-          .filter((product) => product.requirementsMatch === true)
-          .map((product) => product.vendor)
-      )
-    );
-    
-    console.log(`✓ Analysis complete - Fetching logos for ${uniqueVendors.length} vendors:`, uniqueVendors);
-    
-    getVendors(uniqueVendors)
-      .then((apiVendors: any[]) => {
-        const withImages: VendorInfo[] = apiVendors.map((vendor) => ({
-          name: vendor.name,
-          logoUrl: vendor.logoUrl ?? null,
-          images: vendor.images ?? [],
-        }));
-        setVendors(withImages);
-      })
-      .catch((error) => {
-        console.error("Error fetching vendors:", error);
-        setVendors([]);
+
+    const matchedProducts = analysisResult.overallRanking.rankedProducts.filter((p) => p.requirementsMatch === true);
+
+    // Try to build vendors list from analysisResult if logos/images were saved with results
+    const embeddedVendorsMap: Record<string, VendorInfo> = {};
+    matchedProducts.forEach((product) => {
+      const name = product.vendor;
+      if (!name) return;
+      if (!embeddedVendorsMap[name]) embeddedVendorsMap[name] = { name, logoUrl: null, images: [] };
+
+      // Use vendorLogo / vendor_logo if present
+      const vlogo = (product as any).vendorLogo || (product as any).vendor_logo;
+      if (vlogo && (vlogo.url || vlogo.logo)) {
+        const url = vlogo.url || vlogo.logo;
+        embeddedVendorsMap[name].logoUrl = cleanImageUrl(url);
+      }
+
+      // Use topImage / top_image and allImages / all_images if present
+      const topImg = (product as any).topImage || (product as any).top_image;
+      if (topImg && topImg.url) {
+        embeddedVendorsMap[name].images.push(cleanImageUrl(topImg.url));
+      }
+      const allImgs = (product as any).allImages || (product as any).all_images;
+      if (Array.isArray(allImgs) && allImgs.length > 0) {
+        allImgs.forEach((img: any) => {
+          if (img && img.url) embeddedVendorsMap[name].images.push(cleanImageUrl(img.url));
+        });
+      }
+    });
+
+    const embeddedVendors = Object.values(embeddedVendorsMap).filter(v => v.logoUrl || (v.images && v.images.length > 0));
+    if (embeddedVendors.length > 0) {
+      // Use embedded vendor/logo data from analysisResult (e.g., when loading saved project)
+      setVendors(embeddedVendors.map(v => ({ name: v.name, logoUrl: v.logoUrl, images: v.images })));
+      // Also prefill analysisImages map for products that have top_image in analysisResult
+      const preloadedImages: Record<string, AnalysisImageResult> = {};
+      matchedProducts.forEach((product) => {
+        const key = `${product.vendor}-${product.productName}`;
+        const top = (product as any).topImage || (product as any).top_image;
+        const all = (product as any).allImages || (product as any).all_images || [];
+        const vlogo = (product as any).vendorLogo || (product as any).vendor_logo || null;
+        if (top || (all && all.length > 0) || vlogo) {
+          preloadedImages[key] = ({
+            topImage: top ? { ...top, url: cleanImageUrl(top.url) } : null,
+            vendorLogo: vlogo ? { ...vlogo, url: cleanImageUrl(vlogo.url || vlogo.logo) } : null,
+            allImages: Array.isArray(all) ? all.map((img: any) => ({ ...img, url: cleanImageUrl(img.url) })) : []
+          } as unknown) as AnalysisImageResult;
+        }
       });
+      setAnalysisImages(prev => ({ ...prev, ...preloadedImages }));
+      return;
+    }
+
+    // No embedded vendor media found — do not perform external vendor/logo fetching
+    setVendors([]);
   }, [analysisResult, vendors.length]);
 
-  useEffect(() => {
-    getSubmodelMapping()
-      .then((mapping) => {
-        setSubmodelMapping(mapping || {});
-      })
-      .catch((error) => {
-        console.error("Failed to fetch submodel mapping:", error);
-        setSubmodelMapping({});
-      });
-  }, []);
+  // Submodel mapping and other external image heuristics removed: we only use embedded media now.
 
-  // Fetch images when analysis results arrive (after analysis completion)
-  useEffect(() => {
-    if (!analysisResult?.overallRanking?.rankedProducts) return;
-
-    console.log("✓ Analysis complete - Fetching product images now");
-
-    const matchedProducts = analysisResult.overallRanking.rankedProducts.filter(
-      (product) => product.requirementsMatch === true
-    );
-
-    // Fetch images for each matched product using vendor name, product type, product name, and model families
-    matchedProducts.forEach((product) => {
-      // Extract model families from product name
-      const modelFamilies: string[] = [];
-      
-      if (product.productName) {
-        // Extract model numbers and series from product name
-        // Examples: "Rosemount 3051" -> ["3051"], "ST 3000 Series 100" -> ["3000", "100"]
-        const modelMatches = product.productName.match(/\d+[A-Z]*/g);
-        if (modelMatches) {
-          modelFamilies.push(...modelMatches);
-        }
-        
-        // Also include the full product name for better matching
-        modelFamilies.push(product.productName);
-      }
-      
-      // Fetch images using vendor name, product type, product name, and extracted model families
-      fetchAnalysisImages(
-        product.vendor,
-        product.productType,
-        product.productName,
-        modelFamilies
-      );
-    });
-  }, [analysisResult, fetchAnalysisImages]);
+  // External image fetching removed — we rely on embedded analysis images only.
 
   // Auto-undock when analysis data becomes available (only once)
   useEffect(() => {
@@ -355,138 +335,6 @@ const RightPanel: React.FC<RightPanelProps> = ({
     });
     return out;
   }, [vendors]);
-
-  const productImageMap = useMemo(() => {
-    const out: { [vendor: string]: { [product: string]: string } } = {};
-    vendors.forEach(({ name, images }) => {
-      const vendorKey = normalizeVendorName(name);
-      if (!Array.isArray(images)) return;
-      if (!out[vendorKey]) out[vendorKey] = {};
-      
-      images.forEach((img) => {
-        // Backend can return either a string URL or an object { fileName, url, productKey }
-        const url = typeof img === "string" ? img : (img && img.url) ?? null;
-        if (!url) return;
-
-        // If backend provided a productKey explicitly, prefer that (it's already normalized)
-        const providedKey = typeof img === "object" && img?.productKey ? img.productKey : null;
-        if (providedKey) {
-          out[vendorKey][normalizeText(providedKey)] = url;
-          return;
-        }
-
-        // Extract filename from URL - handle various patterns
-        let fileName = "";
-        
-        // Try different URL patterns
-        const patterns = [
-          /\/([^\/\?#]+)\.(png|jpg|jpeg|svg|webp)(?:[\?#].*)?$/i, // Standard: /path/filename.ext
-          /\/([^\/\?#]+?)(?:\.(png|jpg|jpeg|svg|webp))?(?:[\?#].*)?$/i, // Without extension
-          /([^\/\\]+?)\.(png|jpg|jpeg|svg|webp)$/i, // Just filename.ext
-        ];
-        
-        for (const pattern of patterns) {
-          const matches = url.match(pattern);
-          if (matches) {
-            fileName = matches[1];
-            break;
-          }
-        }
-        
-        if (!fileName) {
-          // Last resort: use the last part of the URL
-          const urlParts = url.split('/');
-          fileName = urlParts[urlParts.length - 1].split('.')[0];
-        }
-        
-        // Decode percent-encoded names
-        try {
-          fileName = decodeURIComponent(fileName);
-        } catch (e) {
-          // ignore malformed sequences
-        }
-        
-        // Create multiple variations of the filename for matching
-        const nameVariations = createNameVariations(fileName);
-        nameVariations.forEach(variation => {
-          if (variation) {
-            out[vendorKey][variation] = url;
-          }
-        });
-      });
-    });
-    
-    // Optional: Log summary for debugging
-    const vendorCount = Object.keys(out).length;
-    const totalImages = Object.values(out).reduce((sum, vendor) => sum + Object.keys(vendor).length, 0);
-    console.log(`Product image map created: ${vendorCount} vendors, ${totalImages} total product images`);
-    
-    return out;
-  }, [vendors]);
-
-  const getProductImageUrl = (vendor: string, productName: string): string | undefined => {
-    const vendorKey = normalizeVendorName(vendor);
-    const vendorImages = productImageMap[vendorKey];
-    
-    if (!vendorImages) {
-      console.log(`No images found for vendor: ${vendor} (${vendorKey})`);
-      return undefined;
-    }
-    
-    console.log(`Looking for image: vendor="${vendor}" (${vendorKey}), product="${productName}"`);
-    console.log(`Available products for ${vendorKey}:`, Object.keys(vendorImages));
-    
-    // Strategy 1: Try submodel mapping first
-    const modelSeriesName = submodelMapping[productName] || productName;
-    if (modelSeriesName !== productName) {
-      const mappedVariations = createNameVariations(modelSeriesName);
-      for (const variation of mappedVariations) {
-        if (vendorImages[variation]) {
-          console.log(`Found image via submodel mapping: ${variation}`);
-          return vendorImages[variation];
-        }
-      }
-    }
-    
-    // Strategy 2: Try exact product name variations
-    const productVariations = createNameVariations(productName);
-    for (const variation of productVariations) {
-      if (vendorImages[variation]) {
-        console.log(`Found image via exact match: ${variation}`);
-        return vendorImages[variation];
-      }
-    }
-    
-    // Strategy 3: Fuzzy matching - find images that contain the product name or vice versa
-    const productNormalized = normalizeText(productName);
-    const availableKeys = Object.keys(vendorImages);
-    
-    // Try partial matches
-    for (const imageKey of availableKeys) {
-      // Check if image name contains product name
-      if (imageKey.includes(productNormalized) || productNormalized.includes(imageKey)) {
-        console.log(`Found image via fuzzy match: ${imageKey}`);
-        return vendorImages[imageKey];
-      }
-      
-      // Check if any product variation matches any part of the image key
-      for (const variation of productVariations) {
-        if (variation.length > 2 && (imageKey.includes(variation) || variation.includes(imageKey))) {
-          console.log(`Found image via variation fuzzy match: ${imageKey} ~ ${variation}`);
-          return vendorImages[imageKey];
-        }
-      }
-    }
-    
-    // Strategy 4: If still no match, try the first available image for the vendor
-    if (availableKeys.length > 0) {
-      console.log(`Using first available image for ${vendor}: ${availableKeys[0]}`);
-      return vendorImages[availableKeys[0]];
-    }
-    
-    console.log(`No image found for ${vendor}-${productName}`);
-    return undefined;
-  };
 
   const requirementsMatchMap = useMemo(() => {
     const map = new Map<string, boolean>();
@@ -642,7 +490,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
     const normalizedVendorName = normalizeVendorName(vendorName);
     const logoUrl = vendorLogoMap[normalizedVendorName];
     if (!logoUrl) return null;
-    const safeUrl = logoUrl.startsWith("/") ? `${BASE_URL}${logoUrl}` : logoUrl;
+    const cleanedUrl = cleanImageUrl(logoUrl);
+    const safeUrl = cleanedUrl.startsWith("/") ? `${BASE_URL}${cleanedUrl}` : cleanedUrl;
     return (
       <img
         src={safeUrl}
@@ -730,8 +579,9 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     {overallRanking.rankedProducts.map((product, index) => {
                       const key = `${product.vendor}-${product.productName}`;
                       const imageData = analysisImages[key];
-                      const isLoadingImage = loadingImages[key];
-                      const productImgUrl = imageData?.topImage?.url || getProductImageUrl(product.vendor, product.productName) || product.imageUrl;
+                                      const isLoadingImage = false;
+                                      const rawProductImgUrl = imageData?.topImage?.url || (product as any).topImage?.url || (product as any).top_image?.url || product.imageUrl;
+                                      const productImgUrl = cleanImageUrl(rawProductImgUrl);
                       const priceReviews = getPriceReview(product.vendor, product.productName);
                       const fbKey = getProductKey(product.vendor, product.productName);
                       const fb = feedbackState[fbKey] ?? { type: null, comment: "", loading: false, submitted: false };
@@ -757,7 +607,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                                 ) : productImgUrl ? (
                                   <div className="relative flex-shrink-0">
                                     <img
-                                      src={productImgUrl.startsWith("/") ? `${BASE_URL}${productImgUrl}` : productImgUrl}
+                                      src={productImgUrl ? (productImgUrl.startsWith("/") ? `${BASE_URL}${productImgUrl}` : productImgUrl) : undefined}
                                       alt={`${product.productName} thumbnail`}
                                       onMouseEnter={() => setHoveredImage(productImgUrl)}
                                       onMouseLeave={() => setHoveredImage(null)}
@@ -880,11 +730,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                 <TabsContent key={vendorName} value={vendorName} className="mt-4 min-w-0">
                   <Card className="bg-gradient-card shadow-card rounded-lg min-w-0 flex flex-col">
                     <CardHeader className="pb-3 min-w-0">
-                      {/* Vendor Logo at top of vendor tab */}
-                      <div className="flex items-center gap-3 mb-4">
-                        <RenderVendorLogo vendorName={vendorName} size={48} />
-                        <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100">{vendorName}</h3>
-                      </div>
+                      
                     </CardHeader>
                     <CardContent className="space-y-4 min-w-0">
                       {vendorsGrouped[vendorName]
@@ -893,7 +739,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
                           // Get product-specific image from analysis images
                           const key = `${productMatch.vendor}-${productMatch.productName}`;
                           const imageData = analysisImages[key];
-                          const productImgUrl = imageData?.topImage?.url || (getProductImageUrl(productMatch.vendor, productMatch.productName) ?? productMatch.imageUrl);
+                          const rawProductImgUrl = imageData?.topImage?.url || (productMatch as any).topImage?.url || (productMatch as any).top_image?.url || productMatch.imageUrl;
+                          const productImgUrl = cleanImageUrl(rawProductImgUrl);
                           const priceReviews = getPriceReview(productMatch.vendor, productMatch.productName);
                           const matchScore = productMatch.matchScore ?? 0;
 
@@ -908,7 +755,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                                 {/* Product image (not vendor logo) */}
                                 {productImgUrl ? (
                                   <img
-                                    src={productImgUrl.startsWith("/") ? `${BASE_URL}${productImgUrl}` : productImgUrl}
+                                    src={productImgUrl ? (productImgUrl.startsWith("/") ? `${BASE_URL}${productImgUrl}` : productImgUrl) : undefined}
                                     alt={`${productMatch.productName} thumbnail`}
                                     onMouseEnter={() => setHoveredImage(productImgUrl)}
                                     onMouseLeave={() => setHoveredImage(null)}
@@ -1015,7 +862,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
           className="dark:bg-slate-800/98 dark:border-slate-600"
         >
           <img
-            src={hoveredImage.startsWith("/") ? `${BASE_URL}${hoveredImage}` : hoveredImage}
+            src={hoveredImage ? (hoveredImage.startsWith("/") ? `${BASE_URL}${hoveredImage}` : hoveredImage) : undefined}
             alt="Product preview"
             style={{
               maxWidth: "550px",

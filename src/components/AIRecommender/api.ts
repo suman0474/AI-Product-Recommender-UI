@@ -14,7 +14,7 @@ import {
   AnalysisImageResult,
 } from "./types";
 
-export const BASE_URL = "https://zestful-solace-production-ea2e.up.railway.app";
+export const BASE_URL = "http://localhost:5000";
 axios.defaults.baseURL = BASE_URL;
 axios.defaults.withCredentials = true;
 
@@ -182,7 +182,8 @@ export const initializeNewSearch = async (searchSessionId: string): Promise<void
     validationTracker.set(searchSessionId, false);
     
     await axios.post('/new-search', {
-      search_session_id: searchSessionId
+      search_session_id: searchSessionId,
+      reset: true
     });
     console.log(`[NEW_SEARCH] Initialized search session: ${searchSessionId}`);
   } catch (error: any) {
@@ -204,7 +205,8 @@ export const clearSessionValidationState = (searchSessionId: string): void => {
 export const validateRequirements = async (
   userInput: string,
   productType?: string,
-  searchSessionId?: string
+  searchSessionId?: string,
+  currentStep?: string // ✅ Add current step to determine if this is a repeat validation
 ): Promise<ValidationResult> => {
   try {
     const normalizedInput = normalizeUserInput(userInput);
@@ -212,10 +214,15 @@ export const validateRequirements = async (
     // Check if this session has validated before
     const sessionId = searchSessionId || 'default';
     const hasSessionValidated = validationTracker.get(sessionId) || false;
+    
+    // ✅ If user is in awaitMissingInfo step, it means they've already seen the validation alert once
+    // So this is a repeat validation and is_repeat should be true
+    const isRepeat = hasSessionValidated || currentStep === "awaitMissingInfo";
 
     const payload: any = {
       user_input: normalizedInput,
-      is_repeat: hasSessionValidated, // ✅ tell backend if this session has validated before
+      is_repeat: isRepeat, // ✅ tell backend if this is a repeat validation
+      reset: false, // By default do not reset session state on validation
     };
 
     if (productType) {
@@ -246,8 +253,10 @@ export const analyzeProducts = async (
   userInput: string
 ): Promise<AnalysisResult> => {
   try {
-    const normalizedInput = normalizeUserInput(userInput);
-    const response = await axios.post(`/analyze`, { user_input: normalizedInput });
+    // Send the full, un-normalized userInput to /analyze so the analysis LLM
+    // receives complete context (numbers, units, and punctuation) needed
+    // for accurate product type detection and requirement matching.
+    const response = await axios.post(`/analyze`, { user_input: userInput });
     return convertKeysToCamelCase(response.data) as AnalysisResult;
   } catch (error: any) {
     console.error("Analysis error:", error.response?.data || error.message);
