@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardTitle } from '@/components/ui/card';
 import { Trash2, FileText, Loader2 } from 'lucide-react';
@@ -146,6 +146,7 @@ const ProjectListDialog: React.FC<ProjectListDialogProps> = ({ children, onProje
       <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden">
         <DialogHeader>
           <DialogTitle>Open Project</DialogTitle>
+          <DialogDescription className="sr-only">Select a project from the list to open it.</DialogDescription>
         </DialogHeader>
         
         <div className="flex-1 overflow-y-auto pr-2">
