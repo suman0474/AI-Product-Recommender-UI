@@ -101,156 +101,157 @@ const PdfSearchAndUpload = () => {
       case "error":
         return <AlertCircle className="w-5 h-5 text-red-600" />;
       case "processing":
-        return <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />;
+        return <div className="w-5 h-5 border-2 border-[#0F6CBD] border-t-transparent rounded-full animate-spin" />;
       default:
         return null;
     }
   };
 
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center p-4">
-      <div className="w-full max-w-3xl">
-        {/* Header */}
-        <div className="text-center mb-6">
-          <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Upload className="w-8 h-8 text-white" />
+    <div className="min-h-screen app-glass-gradient flex items-center justify-center p-4">
+      <div className="w-full max-w-3xl transition-all duration-300 hover:scale-[1.02]">
+        <div className="acrylic-glass-pill backdrop-blur-3xl p-8 relative transition-all duration-300 hover:shadow-2xl">
+          {/* Header */}
+          <div className="text-center mb-6 space-y-4">
+
+            <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-[#0F6CBD] to-[#004E8C]">
+              PDF Explorer & Extractor
+            </h1>
+            <button
+              onClick={() => navigate("/project")}
+              className="absolute top-4 left-8 text-slate-700 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 transition-transform hover:scale-125 bg-transparent p-0 border-none outline-none group"
+              title="Return to Requirements"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <p className="text-muted-foreground">
+              Search vendor/product PDFs, view them, or extract data.
+            </p>
           </div>
-          <h1 className="text-3xl font-extrabold text-gray-900 mb-2">PDF Explorer & Extractor</h1>
-          <Button
-            variant="outline"
-            onClick={() => navigate("/project")}
-            className="mb-4"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Return to Requirements
-          </Button>
-          <p className="text-gray-500">
-            Search vendor/product PDFs, view them, or extract data.
-          </p>
-        </div>
 
-        {/* Search Bar */}
-        <div className="flex mb-6 gap-2">
-          <input
-            type="text"
-            className="flex-1 border border-gray-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-400"
-            placeholder="Search vendor/product..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") handleSearch(); }}
-          />
-          <Button onClick={handleSearch} className="px-6 bg-blue-600 text-white hover:bg-blue-700" disabled={isProcessing}>
-            {isProcessing ? "Searching..." : "Search"}
-          </Button>
-        </div>
-
-        {/* PDF List */}
-        {pdfList.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-            {pdfList.map((pdf) => (
-              <Card key={pdf.url} className="border border-blue-300 rounded-lg shadow-sm">
-                <CardContent className="p-4 flex flex-col justify-between h-full">
-                  <div>
-                    <p className="font-medium text-gray-900 mb-2">{pdf.title}</p>
-                    <p className="text-sm text-gray-500 truncate">{pdf.url}</p>
-                    <p className="text-sm text-gray-400 mt-1">{pdf.snippet}</p>
-                  </div>
-                  <div className="flex gap-2 mt-4">
-                    <Button
-                      variant="outline"
-                      onClick={() => window.open(viewPdf(pdf.url), "_blank")}
-                      className="flex-1"
-                      disabled={isProcessing}
-                    >
-                      <Eye className="w-4 h-4 mr-2" /> View
-                    </Button>
-                    <Button
-                      onClick={() => handleUrlUpload(pdf.url)}
-                      className="flex-1 bg-blue-600 text-white hover:bg-blue-700"
-                      disabled={isProcessing}
-                    >
-                      <CloudUpload className="w-4 h-4 mr-2" />
-                      {isProcessing ? "Processing..." : "Upload"}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+          {/* Search Bar */}
+          <div className="flex mb-6 gap-2">
+            <input
+              type="text"
+              className="flex-1 form-glass-input rounded-xl border border-white/20 dark:border-slate-700/30 p-3 bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-[#5FB3E6] placeholder:text-muted-foreground transition-all duration-300 hover:scale-[1.01] hover:shadow-md"
+              placeholder="Search vendor/product..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleSearch(); }}
+            />
+            <Button onClick={handleSearch} className="px-6 btn-glass-primary text-white rounded-xl" disabled={isProcessing}>
+              {isProcessing ? "Searching..." : "Search"}
+            </Button>
           </div>
-        )}
 
-        {/* Local PDF Upload */}
-        <Card className="border border-blue-300 rounded-lg shadow-sm">
-          <CardContent className="p-6 text-center">
+          {/* PDF List */}
+          {pdfList.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+              {pdfList.map((pdf) => (
+                <Card key={pdf.url} className="bg-gradient-to-br from-[#F5FAFC]/50 to-[#EAF6FB]/50 dark:from-slate-800/60 dark:to-slate-800/30 backdrop-blur-sm border border-white/30 dark:border-slate-700/30 rounded-xl hover:shadow-lg transition-all duration-300 hover:bg-white/60 dark:hover:bg-slate-800/60 hover:scale-[1.02]">
+                  <CardContent className="p-4 flex flex-col justify-between h-full">
+                    <div>
+                      <p className="font-medium text-gray-900 mb-2">{pdf.title}</p>
+                      <p className="text-sm text-gray-500 truncate">{pdf.url}</p>
+                      <p className="text-sm text-gray-400 mt-1">{pdf.snippet}</p>
+                    </div>
+                    <div className="flex gap-2 mt-4">
+                      <Button
+                        variant="outline"
+                        onClick={() => window.open(viewPdf(pdf.url), "_blank")}
+                        className="flex-1"
+                        disabled={isProcessing}
+                      >
+                        <Eye className="w-4 h-4 mr-2" /> View
+                      </Button>
+                      <Button
+                        onClick={() => handleUrlUpload(pdf.url)}
+                        className="flex-1 bg-[#5FB3E6] text-white hover:bg-[#4DA0D1]"
+                        disabled={isProcessing}
+                      >
+                        <CloudUpload className="w-4 h-4 mr-2" />
+                        {isProcessing ? "Processing..." : "Upload"}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {/* Local PDF Upload */}
+          <Card className="bg-gradient-to-br from-[#F5FAFC]/50 to-[#EAF6FB]/50 dark:from-slate-800/60 dark:to-slate-800/30 backdrop-blur-sm border border-white/30 dark:border-slate-700/30 rounded-xl shadow-sm transition-all duration-300 hover:shadow-lg hover:scale-[1.02]">
+            <CardContent className="p-6 text-center">
+              <div
+                className={cn(
+                  "border-2 border-dashed border-[#5FB3E6]/50 rounded-2xl p-8 cursor-pointer flex flex-col items-center justify-center mb-4 transition-colors hover:border-[#0F6CBD] hover:bg-white/40 dark:hover:bg-slate-800/40 group transition-all duration-300 hover:scale-[1.02] hover:shadow-xl",
+                  selectedFile ? "bg-white/40 border-[#5FB3E6]" : ""
+                )}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <img src="/icon-upload-3d.png" alt="Upload" className="w-24 h-24 mb-4 object-contain drop-shadow-md transition-transform duration-300 group-hover:scale-110" />
+                {selectedFile ? (
+                  <div className="flex items-center justify-center space-x-3 mt-2">
+                    <FileText className="w-8 h-8 text-[#0F6CBD]" />
+                    <div className="text-left">
+                      <p className="font-medium text-foreground">{selectedFile.name}</p>
+                      <p className="text-sm text-muted-foreground">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-xl font-extrabold text-foreground mb-1">Choose a PDF file</p>
+                    <p className="text-muted-foreground">Click here to select your document</p>
+                  </>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) setSelectedFile(file);
+                  }}
+                  className="hidden"
+                />
+              </div>
+              <Button
+                onClick={() => selectedFile && handleLocalFileUpload(selectedFile)}
+                disabled={!selectedFile || isProcessing}
+                className="w-full sm:w-auto px-8 rounded-full btn-glass-primary text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isProcessing ? "Processing..." : "Upload and Process"}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Status */}
+          {status !== "idle" && (
             <div
               className={cn(
-                "border-2 border-dashed border-blue-400 rounded-2xl p-8 cursor-pointer flex flex-col items-center justify-center mb-4 transition-colors hover:border-blue-700",
-                selectedFile ? "bg-blue-50 border-blue-400" : "border-blue-400"
+                "p-4 rounded-lg flex items-center space-x-3 mt-4",
+                status === "success" && "bg-green-100 text-green-700",
+                status === "error" && "bg-red-100 text-red-700",
+                status === "processing" && "bg-sky-100 text-sky-700"
               )}
-              onClick={() => fileInputRef.current?.click()}
             >
-              <Upload className="w-14 h-14 text-blue-400 mb-2" />
-              {selectedFile ? (
-                <div className="flex items-center justify-center space-x-3 mt-2">
-                  <FileText className="w-8 h-8 text-blue-600" />
-                  <div className="text-left">
-                    <p className="font-medium text-gray-900">{selectedFile.name}</p>
-                    <p className="text-sm text-gray-500">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <p className="text-xl font-extrabold text-gray-900 mb-1">Choose a PDF file</p>
-                  <p className="text-gray-400">Click here to select your document</p>
-                </>
-              )}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".pdf"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) setSelectedFile(file);
-                }}
-                className="hidden"
-              />
+              {getStatusIcon()}
+              <p className="font-medium">{message}</p>
             </div>
-            <Button
-              onClick={() => selectedFile && handleLocalFileUpload(selectedFile)}
-              disabled={!selectedFile || isProcessing}
-              className="w-full sm:w-auto px-8 rounded-full bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isProcessing ? "Processing..." : "Upload and Process"}
-            </Button>
-          </CardContent>
-        </Card>
+          )}
 
-        {/* Status */}
-        {status !== "idle" && (
-          <div
-            className={cn(
-              "p-4 rounded-lg flex items-center space-x-3 mt-4",
-              status === "success" && "bg-green-100 text-green-700",
-              status === "error" && "bg-red-100 text-red-700",
-              status === "processing" && "bg-blue-100 text-blue-700"
-            )}
-          >
-            {getStatusIcon()}
-            <p className="font-medium">{message}</p>
-          </div>
-        )}
-
-        {/* Extraction Results */}
-        {results && (
-          <div className="mt-6 text-left">
-            <h3 className="text-xl font-bold text-gray-900 mb-4">Extraction Results</h3>
-            <div className="bg-gray-100 rounded-lg p-4 overflow-x-auto">
-              <pre className="text-sm text-gray-600 whitespace-pre-wrap">
-                {JSON.stringify(results, null, 2)}
-              </pre>
+          {/* Extraction Results */}
+          {results && (
+            <div className="mt-6 text-left">
+              <h3 className="text-xl font-bold text-gray-900 mb-4">Extraction Results</h3>
+              <div className="bg-gray-100 rounded-lg p-4 overflow-x-auto">
+                <pre className="text-sm text-gray-600 whitespace-pre-wrap">
+                  {JSON.stringify(results, null, 2)}
+                </pre>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

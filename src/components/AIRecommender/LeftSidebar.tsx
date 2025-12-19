@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Bot, LogOut, ChevronLeft, ChevronRight, Mail, Upload } from "lucide-react";
+import { Bot, LogOut, ChevronLeft, ChevronRight, User, Upload } from "lucide-react";
 import { RequirementSchema, ValidationResult } from "./types";
 import { getFieldDescription } from "./api";
 import { Button } from "@/components/ui/button";
@@ -60,12 +60,12 @@ function renderFlatFieldsList(
   parentKey = ""
 ): JSX.Element[] {
   const fieldsByCategory: { [category: string]: any[] } = {};
-  
+
   function traverseAndCollect(currentObj: any, currentParentKey = "", hierarchyPath: string[] = []) {
     Object.entries(currentObj).forEach(([key, value]) => {
       const fullKey = currentParentKey ? `${currentParentKey}.${key}` : key;
       const newHierarchyPath = [...hierarchyPath, prettify(key)];
-      
+
       if (value !== null && typeof value === "object" && !Array.isArray(value)) {
         // Recursively traverse nested objects, building the hierarchy path
         traverseAndCollect(value, fullKey, newHierarchyPath);
@@ -74,18 +74,18 @@ function renderFlatFieldsList(
         const valueRaw = getNestedValue(collectedData, fullKey);
         const isFilled = valueRaw !== undefined && valueRaw !== "" && valueRaw !== null;
         const fieldName = prettify(key);
-        const hierarchicalLabel = newHierarchyPath.length > 1 
+        const hierarchicalLabel = newHierarchyPath.length > 1
           ? `${newHierarchyPath.slice(0, -1).join(" > ")} > ${fieldName}`
           : fieldName;
         const displayValue = Array.isArray(valueRaw) ? valueRaw.join(", ") : String(valueRaw ?? "");
         const categoryPath = newHierarchyPath.slice(0, -1).join(" ");
-        
+
         // Group fields by category
         const category = categoryPath || "General";
         if (!fieldsByCategory[category]) {
           fieldsByCategory[category] = [];
         }
-        
+
         fieldsByCategory[category].push({
           fullKey,
           fieldName,
@@ -97,9 +97,9 @@ function renderFlatFieldsList(
       }
     });
   }
-  
+
   traverseAndCollect(obj, parentKey);
-  
+
   // Now render grouped fields
   const fields: JSX.Element[] = [];
   Object.entries(fieldsByCategory).forEach(([category, categoryFields]) => {
@@ -109,7 +109,7 @@ function renderFlatFieldsList(
         {category}
       </div>
     );
-    
+
     // Add all fields for this category
     categoryFields.forEach((field) => {
       fields.push(
@@ -142,7 +142,7 @@ function renderFlatFieldsList(
       );
     });
   });
-  
+
   return fields;
 }
 
@@ -189,7 +189,7 @@ const LeftSidebar = ({
   }, [requirementSchema, collectedData, isDocked, setIsDocked]);
 
   const profileButtonLabel = capitalizeFirstLetter(user?.name || user?.username || "User");
-  const profileEmail = user?.email || "No email";
+  const profileFullName = user?.name || `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || user?.username || "User";
 
   useEffect(() => {
     // Update fieldDescriptions when savedFieldDescriptions prop changes
@@ -219,7 +219,7 @@ const LeftSidebar = ({
         });
         setFieldDescriptions(newDescriptions);
         console.log('Field descriptions fetched from API:', Object.keys(newDescriptions).length, 'fields');
-        
+
         // Notify parent component about the new field descriptions
         if (onFieldDescriptionsChange) {
           onFieldDescriptionsChange(newDescriptions);
@@ -233,7 +233,7 @@ const LeftSidebar = ({
 
 
   return (
-    <div className="flex flex-col h-full w-full bg-background border-r border-border transition-all duration-300">
+    <div className="flex flex-col h-full w-full glass-sidebar">
       {/* Header - Only show icon if hideProfile is false */}
       {!hideProfile && (
         <div className="flex items-center justify-between py-4 px-3 flex-shrink-0">
@@ -243,7 +243,7 @@ const LeftSidebar = ({
           {/* Dock button moved to corner */}
         </div>
       )}
-      
+
       {/* Minimal header for dashboard when hideProfile is true */}
       {hideProfile && (
         <div className="flex items-center justify-end py-4 px-3 flex-shrink-0">
@@ -257,7 +257,7 @@ const LeftSidebar = ({
           (isDocked ? (
             // Docked view
             <div >
-               
+
             </div>
           ) : (
             // Expanded view
@@ -275,7 +275,7 @@ const LeftSidebar = ({
 
               {requirementSchema.mandatoryRequirements && (
                 <div className="mb-6">
-                  <div className="bg-card rounded-lg p-4 shadow border ">
+                  <div className="bg-white/40 backdrop-blur-sm rounded-lg p-4 shadow-sm border border-white/20">
                     <div className="space-y-3">
                       {renderFlatFieldsList(
                         requirementSchema.mandatoryRequirements,
@@ -288,7 +288,7 @@ const LeftSidebar = ({
               )}
               {requirementSchema.optionalRequirements && (
                 <div>
-                  <div className="bg-card rounded-lg p-4 shadow border ">
+                  <div className="bg-white/40 backdrop-blur-sm rounded-lg p-4 shadow-sm border border-white/20">
                     <div className="space-y-3">
                       {renderFlatFieldsList(
                         requirementSchema.optionalRequirements,
@@ -305,7 +305,7 @@ const LeftSidebar = ({
 
       {/* Footer - Only show if hideProfile is false */}
       {!hideProfile && (
-        <div className="p-3 border-t border-border flex-shrink-0">
+        <div className="p-3 border-t border-white/20 flex-shrink-0">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -319,13 +319,13 @@ const LeftSidebar = ({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
-              className="w-56 bg-popover rounded-xl shadow-xl border border-border mt-1"
+              className="w-56 glass-card mt-1"
               align="end"
               side="top"
             >
               <DropdownMenuLabel className="flex items-center gap-2">
-                <Mail className="w-4 h-4" />
-                {profileEmail}
+                <User className="w-4 h-4" />
+                {profileFullName}
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
 

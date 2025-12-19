@@ -120,6 +120,21 @@ export const logout = async (): Promise<{ message: string }> => {
 };
 
 /**
+ * Updates the user's profile (first name, last name, username).
+ */
+export const updateProfile = async (
+  data: { first_name?: string; last_name?: string; username?: string }
+): Promise<any> => {
+  try {
+    const response = await axios.post(`/api/update_profile`, data);
+    return convertKeysToCamelCase(response.data);
+  } catch (error: any) {
+    console.error("Profile update error:", error.response?.data || error.message);
+    throw new Error(error.response?.data?.error || "Profile update failed");
+  }
+};
+
+/**
  * Checks if the user is authenticated, returning user info or null if not authenticated.
  */
 export const checkAuth = async (): Promise<{ user: User } | null> => {
@@ -143,10 +158,10 @@ export const checkAuth = async (): Promise<{ user: User } | null> => {
 export const getVendors = async (vendorNames?: string[]): Promise<Vendor[]> => {
   try {
     // Build query string with vendor names if provided
-    const params = vendorNames && vendorNames.length > 0 
+    const params = vendorNames && vendorNames.length > 0
       ? { vendors: vendorNames.join(',') }
       : {};
-    
+
     const response = await axios.get(`/vendors`, { params });
     const vendors = convertKeysToCamelCase(response.data.vendors) as Vendor[];
     return vendors;
@@ -180,7 +195,7 @@ export const initializeNewSearch = async (searchSessionId: string): Promise<void
   try {
     // Clear validation tracker for fresh start
     validationTracker.set(searchSessionId, false);
-    
+
     await axios.post('/new-search', {
       search_session_id: searchSessionId,
       reset: true
@@ -214,7 +229,7 @@ export const validateRequirements = async (
     // Check if this session has validated before
     const sessionId = searchSessionId || 'default';
     const hasSessionValidated = validationTracker.get(sessionId) || false;
-    
+
     // ✅ If user is in awaitMissingInfo step, it means they've already seen the validation alert once
     // So this is a repeat validation and is_repeat should be true
     const isRepeat = hasSessionValidated || currentStep === "awaitMissingInfo";
@@ -326,14 +341,14 @@ export const structureRequirements = async (fullInput: string): Promise<any> => 
  */
 export const discoverAdvancedParameters = async (productType: string, searchSessionId?: string): Promise<any> => {
   try {
-    const payload: any = { 
-      product_type: productType 
+    const payload: any = {
+      product_type: productType
     };
-    
+
     if (searchSessionId) {
       payload.search_session_id = searchSessionId;
     }
-    
+
     const response = await axios.post(`/api/advanced_parameters`, payload);
     return convertKeysToCamelCase(response.data);
   } catch (error: any) {
@@ -346,8 +361,8 @@ export const discoverAdvancedParameters = async (productType: string, searchSess
  * Processes user selection of advanced parameters
  */
 export const addAdvancedParameters = async (
-  productType: string, 
-  userInput: string, 
+  productType: string,
+  userInput: string,
   availableParameters: string[]
 ): Promise<any> => {
   try {
@@ -431,11 +446,11 @@ export const classifyIntent = async (userInput: string, searchSessionId?: string
     const payload: any = {
       userInput,
     };
-    
+
     if (searchSessionId) {
       payload.search_session_id = searchSessionId;
     }
-    
+
     const response = await axios.post(`/api/intent`, payload);
     return response.data;
   } catch (error: any) {
@@ -474,7 +489,7 @@ export const generateAgentResponse = async (
     }
 
     const response = await axios.post(`/api/sales-agent`, payload);
-    
+
     // Return the enhanced response structure
     return {
       content: response.data.content,
@@ -691,3 +706,214 @@ export const getAnalysisProductImages = async (
   }
 };
 
+/**
+ * Searches for vendors based on instrument/accessory details
+ * @param category Instrument category
+ * @param productName Product name or accessory name  
+ * @param strategy Procurement strategy (optional)
+ * @returns A promise that resolves with vendor search results
+ */
+export const searchVendors = async (
+  category: string,
+  productName: string,
+  strategy?: string
+): Promise<any> => {
+  try {
+    const response = await axios.post(`/api/search-vendors`, {
+      category,
+      product_name: productName,
+      strategy: strategy || ""
+    });
+    return convertKeysToCamelCase(response.data);
+  } catch (error: any) {
+    console.error("Vendor search error:", error.response?.data || error.message);
+    throw new Error(error.response?.data?.error || "Failed to search vendors");
+  }
+};
+
+// ==================== STRATEGY DOCUMENT API FUNCTIONS ====================
+
+/**
+ * Strategy document interface
+ */
+export interface StrategyDocument {
+  _id?: string;
+  userId?: string;
+  vendorId: string;
+  vendorName: string;
+  category: string;
+  subcategory: string;
+  strategy: string;
+  refinery: string;
+  additionalComments: string;
+  ownerName: string;
+  createdAt?: string;
+  updatedAt?: string;
+  isActive?: boolean;
+}
+
+/**
+ * Get all strategy documents for the current user
+ * @param category Optional category filter
+ * @returns A promise that resolves with the list of strategy documents
+ */
+export const getStrategyDocuments = async (category?: string): Promise<{
+  success: boolean;
+  documents: StrategyDocument[];
+  totalCount: number;
+}> => {
+  try {
+    const params = category ? { category } : {};
+    const response = await axios.get(`/api/strategy-documents`, { params });
+    return convertKeysToCamelCase(response.data);
+  } catch (error: any) {
+    console.error("Get strategy documents error:", error.response?.data || error.message);
+    throw new Error(error.response?.data?.error || "Failed to get strategy documents");
+  }
+};
+
+/**
+ * Upload a single strategy document
+ * @param document Strategy document data
+ * @returns A promise that resolves with the created document ID
+ */
+export const uploadStrategyDocument = async (document: Partial<StrategyDocument>): Promise<{
+  success: boolean;
+  documentId: string;
+  message: string;
+}> => {
+  try {
+    const response = await axios.post(`/api/strategy-documents`, {
+      vendor_id: document.vendorId,
+      vendor_name: document.vendorName,
+      category: document.category,
+      subcategory: document.subcategory,
+      strategy: document.strategy,
+      refinery: document.refinery,
+      additional_comments: document.additionalComments,
+      owner_name: document.ownerName
+    });
+    return convertKeysToCamelCase(response.data);
+  } catch (error: any) {
+    console.error("Upload strategy document error:", error.response?.data || error.message);
+    throw new Error(error.response?.data?.error || "Failed to upload strategy document");
+  }
+};
+
+/**
+ * Bulk upload strategy documents from a CSV file
+ * @param file CSV file containing strategy documents
+ * @returns A promise that resolves with upload results
+ */
+export const bulkUploadStrategyDocuments = async (file: File): Promise<{
+  success: boolean;
+  uploadedCount: number;
+  documentIds: string[];
+  message: string;
+}> => {
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await axios.post(`/api/strategy-documents/bulk`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    return convertKeysToCamelCase(response.data);
+  } catch (error: any) {
+    console.error("Bulk upload strategy documents error:", error.response?.data || error.message);
+    throw new Error(error.response?.data?.error || "Failed to bulk upload strategy documents");
+  }
+};
+
+/**
+ * Delete all strategy documents for the current user
+ * @returns A promise that resolves with delete results
+ */
+export const deleteAllStrategyDocuments = async (): Promise<{
+  success: boolean;
+  deletedCount: number;
+  message: string;
+}> => {
+  try {
+    const response = await axios.delete(`/api/strategy-documents`);
+    return convertKeysToCamelCase(response.data);
+  } catch (error: any) {
+    console.error("Delete strategy documents error:", error.response?.data || error.message);
+    throw new Error(error.response?.data?.error || "Failed to delete strategy documents");
+  }
+};
+
+/**
+ * Import strategy documents from the default CSV file on the server
+ * @returns A promise that resolves with import results
+ */
+export const importDefaultStrategyDocuments = async (): Promise<{
+  success: boolean;
+  uploadedCount: number;
+  message: string;
+}> => {
+  try {
+    const response = await axios.post(`/api/strategy-documents/import-default`);
+    return convertKeysToCamelCase(response.data);
+  } catch (error: any) {
+    console.error("Import default strategy documents error:", error.response?.data || error.message);
+    throw new Error(error.response?.data?.error || "Failed to import default strategy documents");
+  }
+};
+
+/**
+ * Strategy file extraction result interface
+ */
+export interface StrategyFileUploadResult {
+  success: boolean;
+  message: string;
+  documentId?: string;
+  filename?: string;
+  fileType?: string;
+  entryCount?: number;
+  extractedData?: Array<{
+    vendorName: string;
+    category: string;
+    subcategory: string;
+    stratergy: string;
+  }>;
+  error?: string;
+  extractedTextPreview?: string;
+}
+
+/**
+ * Upload a strategy file (PDF, DOCX, TXT, Images) and extract structured strategy data using Gemini 2.5 Flash
+ * 
+ * This function accepts any supported file format and sends it to the backend where:
+ * 1. Text is extracted from the file (PDF, DOCX, images via OCR, etc.)
+ * 2. Gemini 2.5 Flash LLM analyzes the text to extract structured strategy data
+ * 3. The extracted data is stored in MongoDB
+ * 
+ * @param file The file to upload (PDF, DOCX, TXT, JPG, PNG, etc.)
+ * @returns A promise that resolves with the extraction results including extracted strategy data
+ */
+export const uploadStrategyFile = async (file: File): Promise<StrategyFileUploadResult> => {
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await axios.post(`/api/upload-strategy-file`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    return convertKeysToCamelCase(response.data);
+  } catch (error: any) {
+    console.error("Strategy file upload error:", error.response?.data || error.message);
+
+    // Return a structured error response
+    return {
+      success: false,
+      message: error.response?.data?.error || "Failed to upload and process strategy file",
+      error: error.response?.data?.error || error.message,
+      extractedTextPreview: error.response?.data?.extracted_text_preview
+    };
+  }
+};

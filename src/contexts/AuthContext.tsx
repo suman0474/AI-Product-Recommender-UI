@@ -7,17 +7,24 @@ import { useToast } from '../hooks/use-toast';
 interface User {
   username: string;
   name: string;
+  firstName?: string;
+  lastName?: string;
   email: string;
   role: "admin" | "user";        // change to union type for safety
   status: "pending" | "active" | "rejected";  // 'pending', 'active', or 'rejected'
+  companyName?: string;
+  category?: string;
+  strategyInterest?: string;
+  documentFileId?: string;
 }
 
 interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
-  
+
   user: User | null;
   isAdmin: boolean;          // added here
+  refreshUser: () => Promise<void>;
   login: (credentials: Omit<UserCredentials, 'email'>) => Promise<void>;
   signup: (credentials: UserCredentials) => Promise<void>;
   logout: () => Promise<void>;
@@ -43,24 +50,29 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const { toast } = useToast();
 
-  useEffect(() => {
-    const checkAuthStatus = async () => {
-      try {
-        const authData = await checkAuth();
-        setIsAuthenticated(!!authData);
-        if (authData) {
-          // Type cast to the new User interface
-          setUser(authData.user as User);
-        }
-      } catch (error) {
-        setIsAuthenticated(false);
-        setUser(null);
-      } finally {
-        setIsLoading(false);
+  const checkAuthStatus = async () => {
+    try {
+      const authData = await checkAuth();
+      setIsAuthenticated(!!authData);
+      if (authData) {
+        // Type cast to the new User interface
+        setUser(authData.user as User);
       }
-    };
+    } catch (error) {
+      setIsAuthenticated(false);
+      setUser(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
     checkAuthStatus();
   }, []);
+
+  const refreshUser = async () => {
+    await checkAuthStatus();
+  };
 
   const login = async (credentials: Omit<UserCredentials, 'email'>) => {
     try {
@@ -142,6 +154,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     isLoading,
     user,
     isAdmin: user?.role === "admin",   // added helper
+    refreshUser,
     login,
     signup,
     logout,

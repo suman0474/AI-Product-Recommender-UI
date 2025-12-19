@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
-import { Brain, CheckCircle, XCircle,ArrowLeft } from 'lucide-react';
+import { Brain, CheckCircle, XCircle, ArrowLeft } from 'lucide-react';
 import { GlassCard, GlassCardContent, GlassCardHeader, GlassCardTitle } from '../components/ui/glass-card';
 import { BASE_URL } from '../components/AIRecommender/api';
 const API_BASE_URL = BASE_URL;
@@ -101,7 +101,7 @@ const AdminDashboard = () => {
   };
 
   if (authLoading || dataLoading) {
-    return <div className="min-h-screen bg-background flex items-center justify-center text-foreground">Loading...</div>;
+    return <div className="min-h-screen app-glass-gradient flex items-center justify-center text-foreground">Loading...</div>;
   }
 
   if (!user || user.role !== 'admin') {
@@ -109,38 +109,35 @@ const AdminDashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col items-center p-6 relative overflow-hidden">
+    <div className="min-h-screen app-glass-gradient text-foreground flex flex-col items-center justify-center p-6 relative overflow-hidden">
       {/* Subtle gradient background */}
       <div className="absolute inset-0 bg-gradient-to-br from-ai-primary/10 via-ai-primary/5 to-background"></div>
 
-      <div className="relative w-full max-w-4xl mt-12">
-        <GlassCard className="p-8 rounded-2xl border border-border bg-card backdrop-blur-2xl shadow-2xl">
-          <GlassCardHeader className="text-center space-y-4">
-            <div className="w-16 h-16 mx-auto rounded-full flex items-center justify-center shadow-lg" style={{ background: 'var(--gradient-primary)' }}>
-              <Brain className="w-8 h-8 text-white" />
+      <div className="relative w-full max-w-4xl transition-all duration-300 hover:scale-[1.02]">
+        <div className="acrylic-glass-pill backdrop-blur-3xl p-8 relative transition-all duration-300 hover:shadow-2xl">
+          <div className="text-center space-y-4">
+            <div className="w-20 h-20 mx-auto">
+              <img src="/ChatGPT Image Nov 11, 2025, 11_58_30 AM.png" alt="Logo" className="w-full h-full rounded-full object-cover shadow-lg" />
             </div>
             <div>
-              <GlassCardTitle className="text-3xl font-bold text-foreground">
+              <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-[#0F6CBD] to-[#004E8C]">
                 Admin Dashboard
-              </GlassCardTitle>
+              </h1>
             </div>
-            <div>
-              <Button 
-                variant="outline" 
-                onClick={() => navigate('/project')}
-                className="mt-2"
-              >
-                 <ArrowLeft className="w-4 h-4 mr-2" />
-                
-                Return to Requirements
-              </Button>
-            </div>
+            <button
+              onClick={() => navigate('/project')}
+              className="absolute top-4 left-8 text-slate-700 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 transition-transform hover:scale-125 bg-transparent p-0 border-none outline-none group"
+              title="Return to Requirements"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+
             <p className="text-muted-foreground mt-2 text-base">
               Manage user accounts pending approval.
             </p>
-          </GlassCardHeader>
+          </div>
 
-          <GlassCardContent className="mt-8">
+          <div className="mt-8">
             <h3 className="text-xl font-semibold text-foreground mb-4">Pending Users</h3>
             {error ? (
               <p className="text-ai-error text-center">{error}</p>
@@ -151,7 +148,7 @@ const AdminDashboard = () => {
                 {pendingUsers.map((pendingUser) => (
                   <div
                     key={pendingUser.id}
-                    className="flex items-center justify-between p-4 bg-card border border-border rounded-xl"
+                    className="flex items-center justify-between p-4 bg-gradient-to-br from-[#F5FAFC]/50 to-[#EAF6FB]/50 dark:from-slate-800/60 dark:to-slate-800/30 backdrop-blur-sm border border-white/30 dark:border-slate-700/30 rounded-xl hover:shadow-lg transition-all duration-300 hover:bg-white/20 dark:hover:bg-slate-800/40 hover:scale-[1.02]"
                   >
                     <div>
                       <p className="text-foreground font-medium">{pendingUser.username}</p>
@@ -161,7 +158,7 @@ const AdminDashboard = () => {
                       <Button
                         onClick={() => openConfirmationModal(pendingUser, 'approve')}
                         disabled={approvingIds.has(pendingUser.id)}
-                        className="bg-ai-success hover:bg-ai-success/90 text-black"
+                        className="bg-ai-success hover:bg-ai-success text-black transition-transform hover:scale-105"
                       >
                         <CheckCircle className="mr-2 h-4 w-4" />
                         Approve
@@ -170,7 +167,7 @@ const AdminDashboard = () => {
                         variant="ghost"
                         onClick={() => openConfirmationModal(pendingUser, 'reject')}
                         disabled={approvingIds.has(pendingUser.id)}
-                        className="text-ai-error hover:text-ai-error/90"
+                        className="text-ai-error hover:text-red-700 hover:bg-transparent transition-transform hover:scale-105"
                       >
                         <XCircle className="mr-2 h-4 w-4" />
                         Reject
@@ -180,40 +177,46 @@ const AdminDashboard = () => {
                 ))}
               </div>
             )}
-          </GlassCardContent>
-        </GlassCard>
+          </div>
+        </div>
       </div>
 
       {/* Confirmation Modal */}
       {modalOpen && (
         <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/70 backdrop-blur-md">
-          <div className="rounded-2xl p-8 w-[380px] max-w-full text-center shadow-2xl border border-border bg-popover text-foreground">
+          <div className="rounded-2xl p-8 w-[380px] max-w-full text-center shadow-2xl border border-white/20 dark:border-slate-700/30 bg-gradient-to-br from-[#F5FAFC]/90 to-[#EAF6FB]/90 dark:from-slate-900/90 dark:to-slate-900/50 backdrop-blur-2xl text-foreground">
             <h2 className="text-2xl font-bold mb-4">
               Confirm {modalAction === 'approve' ? 'Approval' : 'Rejection'}
             </h2>
             <p className="mb-6 text-lg">
               Are you sure you want to {modalAction} <span className="font-bold">{modalUser?.username}</span>?
             </p>
-            <div className="flex justify-center gap-4">
-              <Button variant="outline" onClick={() => setModalOpen(false)} className="px-6">
+            <div className="flex justify-center items-center gap-8 mt-6">
+
+              <button
+                onClick={() => setModalOpen(false)}
+                className="text-muted-foreground hover:text-slate-900 dark:hover:text-slate-100 font-medium transition-transform hover:scale-125 bg-transparent border-none cursor-pointer"
+              >
                 Cancel
-              </Button>
-              <Button
-                variant="outline"
-                className={`px-6 font-semibold flex items-center gap-2 ${modalAction === 'approve' ? 'border-ai-success text-ai-success' : 'border-ai-error text-ai-error'}`}
+              </button>
+              <button
+                className={`font-semibold flex items-center gap-2 transition-transform hover:scale-125 bg-transparent border-none cursor-pointer ${modalAction === 'approve'
+                  ? 'text-ai-success hover:text-green-700 dark:hover:text-green-400'
+                  : 'text-ai-error hover:text-red-700 dark:hover:text-red-400'
+                  }`}
                 onClick={() => performAction(modalUser.id, modalAction)}
                 disabled={approvingIds.has(modalUser.id)}
               >
                 {modalAction === 'approve' ? (
                   <>
-                    <CheckCircle className="inline mr-2 h-5 w-5" /> Approve
+                    <CheckCircle className="inline mr-1 h-5 w-5" /> Approve
                   </>
                 ) : (
                   <>
-                    <XCircle className="inline mr-2 h-5 w-5" /> Reject
+                    <XCircle className="inline mr-1 h-5 w-5" /> Reject
                   </>
                 )}
-              </Button>
+              </button>
             </div>
           </div>
         </div>

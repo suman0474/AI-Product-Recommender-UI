@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
@@ -33,9 +34,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
- 
+
 type ConversationStep = WorkflowStep;
- 
+
 interface AIRecommenderProps {
   initialInput?: string;
   fillParent?: boolean;
@@ -71,9 +72,9 @@ interface AIRecommenderProps {
   savedPricingData?: Record<string, any>;
 }
 
-const AIRecommender = ({ 
-  initialInput, 
-  fillParent, 
+const AIRecommender = ({
+  initialInput,
+  fillParent,
   onStateChange,
   savedMessages,
   savedCollectedData,
@@ -117,7 +118,7 @@ const AIRecommender = ({
       clearSessionValidationState(searchSessionId);
     };
   }, [searchSessionId]);
-  
+
   const [collectedData, setCollectedData] = useState<{ [key: string]: any }>({});
   const [advancedParameters, setAdvancedParameters] = useState<AdvancedParametersResult | null>(null);
   const [selectedAdvancedParams, setSelectedAdvancedParams] = useState<{ [key: string]: string }>({});
@@ -134,7 +135,7 @@ const AIRecommender = ({
   });
   const [currentStep, setCurrentStep] = useState<ConversationStep>("greeting");
   const [hasAutoSubmitted, setHasAutoSubmitted] = useState(false);
- 
+
   // Layout states
   const [isStreaming, setIsStreaming] = useState(false);
   const [isDocked, setIsDocked] = useState(true);
@@ -147,7 +148,7 @@ const AIRecommender = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const [draggingHandle, setDraggingHandle] = useState<"left" | "right" | null>(null);
- 
+
   // Update sidebar width when docking state changes
   useEffect(() => {
     const newLeftWidth = isDocked ? DEFAULT_DOCKED_WIDTH : DEFAULT_EXPANDED_WIDTH;
@@ -170,7 +171,7 @@ const AIRecommender = ({
         // Continue anyway - the backend will handle missing session ID gracefully
       }
     };
-    
+
     initializeSearch();
   }, [searchSessionId]);
 
@@ -184,10 +185,10 @@ const AIRecommender = ({
       return;
     }
 
-     
+
     if (savedMessages || savedCollectedData || savedCurrentStep || savedAnalysisResult || savedRequirementSchema || savedValidationResult) {
       console.log(`[${searchSessionId}] Restoring saved state...`);
-      
+
       // Restore saved state
       if (savedMessages && savedMessages.length > 0) {
         console.log(`[${searchSessionId}] Restoring ${savedMessages.length} messages`);
@@ -196,17 +197,17 @@ const AIRecommender = ({
           messages: savedMessages
         }));
       }
-      
+
       if (savedCollectedData) {
         console.log(`[${searchSessionId}] Restoring collected data with ${Object.keys(savedCollectedData).length} keys`);
         setCollectedData(savedCollectedData);
       }
-      
+
       if (savedCurrentStep) {
         console.log(`[${searchSessionId}] Restoring current step: ${savedCurrentStep}`);
         setCurrentStep(savedCurrentStep);
       }
-      
+
       if (savedAnalysisResult) {
         console.log(`[${searchSessionId}] Restoring analysis result`);
         setState(prev => ({
@@ -214,7 +215,7 @@ const AIRecommender = ({
           analysisResult: savedAnalysisResult
         }));
       }
-      
+
       // Restore extended state
       if (savedRequirementSchema) {
         console.log(`[${searchSessionId}] Restoring requirement schema`);
@@ -223,7 +224,7 @@ const AIRecommender = ({
           requirementSchema: savedRequirementSchema
         }));
       }
-      
+
       if (savedValidationResult) {
         console.log(`[${searchSessionId}] Restoring validation result`);
         setState(prev => ({
@@ -233,7 +234,7 @@ const AIRecommender = ({
           productType: savedCurrentProductType || prev.productType
         }));
       }
-      
+
       // Determine input value: prefer saved draft if provided, otherwise fall back to initial input.
       // This ensures when users were mid-chat and saved a draft input, it is restored on load.
       const hasMessages = savedMessages && savedMessages.length > 0;
@@ -245,27 +246,27 @@ const AIRecommender = ({
       setState(prev => ({ ...prev, inputValue: inputValueToSet }));
       // Mark auto-fill as handled so other effects don't overwrite this restored input
       setHasAutoSubmitted(true);
-      
+
       if (savedAdvancedParameters) {
         console.log(`[${searchSessionId}] Restoring advanced parameters`);
         setAdvancedParameters(savedAdvancedParameters);
       }
-      
+
       if (savedSelectedAdvancedParams) {
         console.log(`[${searchSessionId}] Restoring selected advanced params`);
         setSelectedAdvancedParams(savedSelectedAdvancedParams);
       }
-      
+
       if (savedFieldDescriptions && Object.keys(savedFieldDescriptions).length > 0) {
         console.log(`[${searchSessionId}] Restoring field descriptions:`, Object.keys(savedFieldDescriptions).length, 'fields');
         setFieldDescriptions(savedFieldDescriptions);
       }
-      
+
       if (savedPricingData && Object.keys(savedPricingData).length > 0) {
         console.log(`[${searchSessionId}] Restoring pricing data:`, Object.keys(savedPricingData).length, 'products');
         setPricingData(savedPricingData);
       }
-      
+
       // After restoration, trigger state notification to parent
       if (onStateChange) {
         console.log(`[${searchSessionId}] Notifying parent of restored state`);
@@ -316,22 +317,22 @@ const AIRecommender = ({
       });
     }
   }, [state.messages, collectedData, currentStep, state.analysisResult, searchSessionId, state.requirementSchema, state.validationResult, state.currentProductType, state.inputValue, advancedParameters, selectedAdvancedParams, fieldDescriptions, pricingData]);
- 
+
   // --- Resize functionality ---
   const handleMouseDown = useCallback((e: React.MouseEvent, handle: "left" | "right") => {
     e.preventDefault();
     setDraggingHandle(handle);
-   
+
     const startX = e.clientX;
     const startWidths = { ...widths };
     const containerWidth = containerRef.current?.offsetWidth || 1200;
- 
+
     const handleMouseMove = (moveEvent: MouseEvent) => {
       if (!containerRef.current) return;
-     
+
       const deltaX = moveEvent.clientX - startX;
       const deltaPercent = (deltaX / containerWidth) * 100;
- 
+
       let newWidths;
       if (handle === "left") {
         // Dragging left handle (between sidebar and chat)
@@ -352,31 +353,31 @@ const AIRecommender = ({
           right: Math.max(10, startWidths.right - adjustment)
         };
       }
- 
+
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
-     
+
       animationFrameRef.current = requestAnimationFrame(() => {
         setWidths(newWidths);
       });
     };
- 
+
     const handleMouseUp = () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
       setDraggingHandle(null);
-     
+
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
       }
     };
- 
+
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
   }, [widths]);
- 
+
   // Cleanup animation frame on unmount
   useEffect(() => {
     return () => {
@@ -385,7 +386,7 @@ const AIRecommender = ({
       }
     };
   }, []);
- 
+
   // Handle field descriptions updates from LeftSidebar
   const handleFieldDescriptionsChange = useCallback((descriptions: Record<string, string>) => {
     console.log(`[${searchSessionId}] Field descriptions updated:`, Object.keys(descriptions).length, 'fields');
@@ -407,7 +408,7 @@ const AIRecommender = ({
     },
     []
   );
- 
+
   const updateMessage = useCallback((id: string, newContent: string) => {
     setState((prev) => ({
       ...prev,
@@ -416,7 +417,7 @@ const AIRecommender = ({
       ),
     }));
   }, []);
- 
+
   const streamAssistantMessage = useCallback(
     async (fullText: string) => {
       // For single-response steps we no longer stream character-by-character.
@@ -430,7 +431,7 @@ const AIRecommender = ({
     },
     [addMessage]
   );
- 
+
   const composeUserDataString = (data: any): string => {
     const parts: string[] = [];
     if (data.productType) parts.push(`Product Type: ${data.productType}`);
@@ -441,15 +442,15 @@ const AIRecommender = ({
         parts.push(
           typeof value === "object"
             ? Object.entries(value)
-                .map(([k, v]) => (Array.isArray(v) ? `${k}: ${v.join(", ")}` : `${k}: ${v}`))
-                .join(". ")
+              .map(([k, v]) => (Array.isArray(v) ? `${k}: ${v.join(", ")}` : `${k}: ${v}`))
+              .join(". ")
             : `${key}: ${value}`
         );
       }
     }
     return parts.join(". ");
   };
- 
+
   const flattenRequirements = (provided: any): { [key: string]: any } => {
     const flat: { [key: string]: any } = {};
     const process = (reqs: any) => {
@@ -470,7 +471,7 @@ const AIRecommender = ({
     }
     return flat;
   };
- 
+
   const mergeRequirementsWithSchema = (provided: { [key: string]: any }, schema: RequirementSchema) => {
     const merged: { [key: string]: any } = { ...provided };
     const allKeys = [
@@ -482,25 +483,50 @@ const AIRecommender = ({
     });
     return merged;
   };
- 
+
   // --- Core analysis and summary flow ---
   const performAnalysis = useCallback(async () => {
     setState((prev) => ({ ...prev, isLoading: true }));
     try {
       const fullInputStr = `Product Type: ${state.productType}. ${composeUserDataString(collectedData)}`;
       const analysis: AnalysisResult = await analyzeProducts(fullInputStr);
-      const threshold = 80;
-      const highScoringProducts = analysis.overallRanking.rankedProducts.filter(
-        (p) => p.overallScore >= threshold && p.requirementsMatch === true
-      );
-      const count = highScoringProducts.length;
 
-      // ✅ Fetch images and logos for all products after analysis completes
-      if (analysis.overallRanking?.rankedProducts && analysis.overallRanking.rankedProducts.length > 0) {
+      // Thresholds for match quality
+      // Exact matches: No score threshold - show ALL products where requirementsMatch === true
+      // Approximate matches: Minimum score of 50% to ensure reasonable quality
+      const APPROXIMATE_THRESHOLD = 50;
+
+      // Split products into exact and approximate matches
+      // Exact matches: ALL products where requirementsMatch === true (no score requirement)
+      const exactMatches = analysis.overallRanking.rankedProducts.filter(
+        (p) => p.requirementsMatch === true
+      );
+
+      // Approximate matches: requirementsMatch === false AND score >= 50%
+      const approximateMatches = analysis.overallRanking.rankedProducts.filter(
+        (p) => p.requirementsMatch === false && (p.overallScore ?? 0) >= APPROXIMATE_THRESHOLD
+      );
+
+      // Fallback logic: use exact if available, otherwise approximate
+      const count = exactMatches.length > 0 ? exactMatches.length : approximateMatches.length;
+      const displayMode = exactMatches.length > 0 ? 'exact' : 'approximate';
+
+      const message = exactMatches.length > 0
+        ? `Found ${exactMatches.length} product${exactMatches.length !== 1 ? 's' : ''} matching all requirements`
+        : `No exact matches found. Found ${approximateMatches.length} close alternative${approximateMatches.length !== 1 ? 's' : ''}`;
+
+      // ✅ Fetch images ONLY for products that will be displayed
+      // If exact matches exist, fetch only for exact matches
+      // If no exact matches, fetch only for approximate matches
+      const productsToFetchImagesFor = displayMode === 'exact' ? exactMatches : approximateMatches;
+
+      if (productsToFetchImagesFor.length > 0) {
         try {
-          const imageFetchPromises = analysis.overallRanking.rankedProducts.map(async (product) => {
+          console.log(`[IMAGE_FETCH] Fetching images for ${productsToFetchImagesFor.length} ${displayMode} match products`);
+
+          const imageFetchPromises = productsToFetchImagesFor.map(async (product) => {
             if (!product.vendor || !product.productName) return product;
-            
+
             try {
               const modelFamilies = product.modelFamily ? [product.modelFamily] : [];
               const imageResult = await getAnalysisProductImages(
@@ -509,7 +535,7 @@ const AIRecommender = ({
                 product.productName,
                 modelFamilies
               );
-              
+
               // Update product with images and logo
               return {
                 ...product,
@@ -522,12 +548,18 @@ const AIRecommender = ({
               return product; // Return product without images if fetch fails
             }
           });
-          
+
           const productsWithImages = await Promise.all(imageFetchPromises);
-          
-          // Update analysis result with products that have images
-          analysis.overallRanking.rankedProducts = productsWithImages;
-          
+
+          // Update the analysis result with products that have images
+          // Replace only the products we fetched images for
+          analysis.overallRanking.rankedProducts = analysis.overallRanking.rankedProducts.map(product => {
+            const updatedProduct = productsWithImages.find(
+              p => p.vendor === product.vendor && p.productName === product.productName
+            );
+            return updatedProduct || product; // Use updated if found, otherwise keep original
+          });
+
           // Also update vendorMatches if they exist
           if (analysis.vendorAnalysis?.vendorMatches) {
             for (const match of analysis.vendorAnalysis.vendorMatches) {
@@ -541,16 +573,26 @@ const AIRecommender = ({
               }
             }
           }
+
+          console.log(`[IMAGE_FETCH] Successfully fetched images for ${productsWithImages.length} products`);
         } catch (error) {
           console.error("Error fetching product images:", error);
           // Continue even if image fetching fails
         }
+      } else {
+        console.log(`[IMAGE_FETCH] No products to fetch images for (displayMode: ${displayMode})`);
       }
+
+      // Show same message for both exact and approximate matches (no warning)
+      const contextMessage = `Analysis complete. ${message}.`;
 
       const llmResponse = await generateAgentResponse(
         "finalAnalysis",
-        { analysisResult: analysis },
-        `Analysis complete. Found ${count} matching products.`,
+        {
+          analysisResult: analysis,
+          displayMode
+        },
+        contextMessage,
         undefined,
         searchSessionId
       );
@@ -558,7 +600,11 @@ const AIRecommender = ({
 
       setState((prev) => ({ ...prev, analysisResult: analysis, isLoading: false }));
       setCurrentStep("initialInput");
-      toast({ title: "Analysis Complete", description: `Found ${count} matching products.` });
+      toast({
+        title: "Analysis Complete",
+        description: message,
+        variant: "default"  // Same variant for both exact and approximate
+      });
     } catch (error) {
       console.error("Analysis error:", error);
       const llmResponse = await generateAgentResponse(
@@ -598,7 +644,7 @@ const AIRecommender = ({
       // ✅ Always call analysis immediately after structure response
       // Analysis should be called right after structure_requirements response
       await performAnalysis();
-      
+
       setState((prev) => ({ ...prev, isLoading: false }));
     } catch (error) {
       console.error("Summary error:", error);
@@ -620,16 +666,16 @@ const AIRecommender = ({
     async (userInput: string) => {
       const trimmedInput = userInput.trim();
       if (!trimmedInput) return;
-     
+
       // Add user message
       addMessage({ type: "user", content: trimmedInput, role: undefined });
       setState((prev) => ({ ...prev, inputValue: "", isLoading: true }));
- 
+
       try {
         // Step 1: Classify user intent (with session ID for isolation)
         const intentResult: IntentClassificationResult = await classifyIntent(trimmedInput, searchSessionId);
         console.log('Intent classification result:', intentResult);
-       
+
         // Handle knowledge questions (interrupts workflow)
         if (intentResult.intent === "knowledgeQuestion") {
           const agentResponse: AgentResponse = await generateAgentResponse(
@@ -642,17 +688,17 @@ const AIRecommender = ({
             "knowledgeQuestion",
             searchSessionId
           );
-         
+
           await streamAssistantMessage(agentResponse.content);
           setState((prev) => ({ ...prev, isLoading: false }));
           // Keep current step unchanged for workflow resumption
           return;
         }
- 
+
         // Step 2: Handle workflow based on intent and current step
         let targetStep = intentResult.nextStep || currentStep;
         let agentResponse: AgentResponse;
-       
+
         // Special case: When intent API identifies nextStep as "showSummary",
         // directly call structure_requirements and then analyze, skipping sales agent response
         if (intentResult.nextStep === "showSummary") {
@@ -663,18 +709,18 @@ const AIRecommender = ({
             if (!collectedData || Object.keys(collectedData).length === 0) {
               throw new Error("No collected data available for summary");
             }
-            
+
             const requirementsOnly = (({ productType, ...rest }) => rest)(collectedData);
             const requirementsString = composeUserDataString(requirementsOnly);
             const structuredResponse = await structureRequirements(requirementsString);
             const summaryContent = structuredResponse.structuredRequirements;
-            
+
             // Display the structured summary
             addMessage({ type: "assistant", content: `\n\n${summaryContent}\n\n`, role: undefined });
-            
+
             // Directly call analyze API after structure_requirements
             await performAnalysis();
-            
+
             setState((prev) => ({ ...prev, isLoading: false }));
             return;
           } catch (error) {
@@ -683,7 +729,7 @@ const AIRecommender = ({
             // Fall through to normal flow if error occurs
           }
         }
-       
+
         // Force initialInput if user provides product requirements, but only when
         // the conversation is starting or in a neutral state. Do NOT force a reset
         // when the user is already in `awaitAdditionalAndLatestSpecs`, `awaitAdvancedSpecs`, or
@@ -697,7 +743,7 @@ const AIRecommender = ({
             targetStep = currentStep;
           }
         }
-       
+
         console.log('Target step:', targetStep);
 
         // Note: Do NOT shortcut to `showSummary` from the client.
@@ -716,7 +762,7 @@ const AIRecommender = ({
             setCurrentStep("initialInput");
             break;
           }
- 
+
           case "initialInput": {
             // Process product requirements
             console.log('Processing initialInput - calling validateRequirements with:', trimmedInput);
@@ -728,11 +774,11 @@ const AIRecommender = ({
                 setCurrentStep("initialInput");
                 break;
               }
- 
+
               const schema = await getRequirementSchema(validation.productType);
               const flatRequirements = flattenRequirements(validation.providedRequirements);
               const mergedData = mergeRequirementsWithSchema(flatRequirements, schema);
- 
+
               setCollectedData(mergedData);
               setState((prev) => ({
                 ...prev,
@@ -741,19 +787,42 @@ const AIRecommender = ({
                 currentProductType: validation.productType,
                 validationResult: validation,
               }));
- 
+
               if (validation.validationAlert) {
                 // Ask the user for missing info (LLM will later decide on confirmation)
                 await streamAssistantMessage(validation.validationAlert.message);
                 setCurrentStep("awaitMissingInfo");
               } else {
+                // All mandatory fields provided - fetch advanced parameters and show them
+                let advancedParams: AdvancedParametersResult | null = null;
+                try {
+                  advancedParams = await discoverAdvancedParameters(validation.productType, searchSessionId);
+                  if (advancedParams && advancedParams.uniqueParameters) {
+                    setAdvancedParameters(advancedParams);
+                    console.log('[INITIAL_INPUT] Fetched advanced parameters:', advancedParams.uniqueParameters.length);
+                  }
+                } catch (paramError) {
+                  console.warn('[INITIAL_INPUT] Could not fetch advanced parameters:', paramError);
+                }
+
+                // Format specifications list for display
+                const specsToDisplay = advancedParams?.uniqueParameters?.slice(0, 10) || [];
+                const specsListFormatted = specsToDisplay
+                  .map((s: any) => typeof s === 'string' ? s : (s.name || s.key || ''))
+                  .filter((s: string) => s)
+                  .map((s: string) => s.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()))
+                  .join(', ');
+
                 agentResponse = await generateAgentResponse(
-                  "initialInput",
+                  "initialInputWithSpecs",
                   {
                     productType: validation.productType,
-                    requirements: flatRequirements
+                    requirements: flatRequirements,
+                    availableSpecs: specsListFormatted,
+                    availableParameters: advancedParams?.uniqueParameters || [],
+                    specsCount: advancedParams?.uniqueParameters?.length || 0
                   },
-                  `Product type detected: ${validation.productType}.`,
+                  `Product type detected: ${validation.productType}. Available specs: ${specsListFormatted}`,
                   undefined,
                   searchSessionId
                 );
@@ -770,7 +839,7 @@ const AIRecommender = ({
             }
             break;
           }
- 
+
           case "awaitAdditionalAndLatestSpecs": {
             // Handle the combined "Additional and Latest Specs" step
             try {
@@ -794,7 +863,7 @@ const AIRecommender = ({
                   // User provided additional specs - process them first before moving to advanced parameters
                   // Check if we're collecting specs (not just yes/no response)
                   const isCollectingSpecs = !/^(yes|y|no|n|nope|skip)$/i.test(trimmedInput.trim());
-                  
+
                   if (isCollectingSpecs) {
                     // Process additional requirements and merge with collectedData
                     try {
@@ -808,12 +877,12 @@ const AIRecommender = ({
                       // Continue even if processing fails
                     }
                   }
-                  
+
                   setCurrentStep("awaitAdvancedSpecs");
                   // Discover parameters in the background
                   const parametersResult = await discoverAdvancedParameters(state.productType!, searchSessionId);
                   setAdvancedParameters(parametersResult);
-                  
+
                   // Call backend to get the formatted parameter display
                   const advancedResponse = await generateAgentResponse(
                     "awaitAdvancedSpecs",
@@ -848,7 +917,7 @@ const AIRecommender = ({
             setState((prev) => ({ ...prev, isLoading: false }));
             break;
           }
- 
+
           case "awaitAdvancedSpecs": {
             try {
               // Do not short-circuit skip/summary behavior on the client.
@@ -922,7 +991,7 @@ const AIRecommender = ({
             setState((prev) => ({ ...prev, isLoading: false }));
             break;
           }
- 
+
           case "showSummary": {
             // User is confirming to proceed with analysis after seeing summary
             const normalizedInput = trimmedInput.toLowerCase().replace(/\s/g, "");
@@ -931,7 +1000,7 @@ const AIRecommender = ({
             }
             break;
           }
-         
+
           case "finalAnalysis": {
             // Handle rerun requests after analysis
             const normalizedInput = trimmedInput.toLowerCase().replace(/\s/g, "");
@@ -940,7 +1009,7 @@ const AIRecommender = ({
             }
             break;
           }
- 
+
           case "analysisError": {
             const normalizedInput = trimmedInput.toLowerCase().replace(/\s/g, "");
             if (["rerun", "run", "runagain"].includes(normalizedInput)) {
@@ -951,13 +1020,16 @@ const AIRecommender = ({
             }
             break;
           }
- 
+
           default: {
             // Handle missing info or general conversation
             if (currentStep === "awaitMissingInfo") {
               try {
-                // Short-circuit confirmations like "yes", "y", "skip" to allow skipping missing fields
-                const shortConfirm = /^(yes|y|skip)$/i.test(trimmedInput);
+                // Short-circuit confirmations like "yes", "y", "skip", "proceed", "continue" to allow skipping missing fields
+                const shortConfirm = /^(yes|y|skip|proceed|continue)$/i.test(trimmedInput);
+                // Check for "no" response
+                const shortNo = /^(no|n|nope)$/i.test(trimmedInput);
+
                 if (shortConfirm) {
                   // Let backend and LLM know user chose to skip providing missing mandatory info
                   const confirmationResponse = await generateAgentResponse(
@@ -970,17 +1042,40 @@ const AIRecommender = ({
                   await streamAssistantMessage(confirmationResponse.content);
                   // Move to additional and latest specs step
                   setCurrentStep("awaitAdditionalAndLatestSpecs");
+                } else if (shortNo) {
+                  // User said "no" - they want to provide missing fields
+                  // Get the missing fields from validation result
+                  const missingFields = state.validationResult?.validationAlert?.missingFields || [];
+                  const missingFieldsFormatted = missingFields
+                    .map((f: string) => f.replace(/([A-Z])/g, ' $1').replace(/^./, (str: string) => str.toUpperCase()).trim())
+                    .join(", ");
+
+                  // Generate a response asking what they want to add
+                  const noResponse = await generateAgentResponse(
+                    "askForMissingFields",
+                    {
+                      productType: state.productType,
+                      missingFields: missingFieldsFormatted,
+                      missingFieldsList: missingFields
+                    },
+                    `User wants to provide missing fields: ${missingFieldsFormatted}`,
+                    undefined,
+                    searchSessionId
+                  );
+                  await streamAssistantMessage(noResponse.content);
+                  // Stay at awaitMissingInfo step - loop until user says yes
+                  setCurrentStep("awaitMissingInfo");
                 } else {
                   // User provided additional data - run validation to check if missing fields are satisfied
                   const combinedInput = `${composeUserDataString(collectedData)} ${trimmedInput}`;
                   const newValidation: ValidationResult = await validateRequirements(combinedInput, state.validationResult?.productType, searchSessionId, currentStep);
                   const newFlatRequirements = flattenRequirements(newValidation.providedRequirements);
                   const updatedData = mergeRequirementsWithSchema({ ...collectedData, ...newFlatRequirements }, state.requirementSchema!);
- 
+
                   // Update collected data with the new information
                   setCollectedData(updatedData);
                   setState((prev) => ({ ...prev, validationResult: newValidation }));
- 
+
                   if (newValidation.validationAlert) {
                     // Still missing some required info
                     await streamAssistantMessage(newValidation.validationAlert.message);
@@ -995,7 +1090,7 @@ const AIRecommender = ({
                       searchSessionId
                     );
                     await streamAssistantMessage(agentResponse.content);
- 
+
                     // Move to awaitAdditionalAndLatestSpecs step
                     if (agentResponse.nextStep) {
                       setCurrentStep(agentResponse.nextStep as any);
@@ -1016,9 +1111,9 @@ const AIRecommender = ({
             }
           }
         }
- 
+
         setState((prev) => ({ ...prev, isLoading: false }));
- 
+
       } catch (error) {
         console.error("Message handling error:", error);
         await streamAssistantMessage("I'm sorry, there was an error processing your message. Please try again.");
@@ -1027,19 +1122,19 @@ const AIRecommender = ({
     },
     [currentStep, collectedData, state.productType, state.validationResult, state.requirementSchema, addMessage, performAnalysis, handleShowSummaryAndProceed, streamAssistantMessage]
   );
- 
+
   const setInputValue = useCallback((value: string) => {
     setState((prev) => ({ ...prev, inputValue: value }));
   }, []);
- 
+
   const handleRetry = useCallback(() => performAnalysis(), [performAnalysis]);
- 
+
   // Handle URL parameters for auto-filling input (but not auto-submitting)
   useEffect(() => {
     // Check for sessionStorage key first (for large inputs from Requirements page)
     const inputKey = searchParams.get('inputKey');
     let inputParam = searchParams.get('input');
-    
+
     if (inputKey) {
       // Retrieve from sessionStorage and clean up
       const storedInput = sessionStorage.getItem(inputKey);
@@ -1048,7 +1143,7 @@ const AIRecommender = ({
         sessionStorage.removeItem(inputKey); // Clean up after reading
       }
     }
-    
+
     // Prefer prop-based initial input when provided (for embedded tabs)
     if (!inputParam && initialInput) {
       inputParam = initialInput;
@@ -1067,28 +1162,29 @@ const AIRecommender = ({
       }
     }
   }, [searchParams, hasAutoSubmitted, initialInput, savedMessages, searchSessionId]);
- 
+
   return (
+
     <div
-      className={`flex flex-col ${fillParent ? 'h-full' : 'h-screen'} bg-background text-foreground`}
+      className={`flex flex-col ${fillParent ? 'h-full' : 'h-screen'} text-foreground`}
       ref={containerRef}
     >
       {/* Left corner dock button - positioned below header */}
       <Button
         variant="ghost"
         size="icon"
-        className="fixed top-24 left-4 z-20 bg-background border shadow-lg hover:bg-background/90"
+        className="fixed top-32 left-0 z-20 btn-glass-secondary border-0 shadow-lg rounded-l-none"
         onClick={() => setIsDocked(!isDocked)}
         aria-label={isDocked ? "Expand left panel" : "Collapse left panel"}
       >
         {isDocked ? <ChevronRight /> : <ChevronLeft />}
       </Button>
 
-      {/* Right corner dock button - positioned below header */}
+      {/* Right corner dock button - positioned below header (raise above panel content) */}
       <Button
         variant="ghost"
         size="icon"
-        className="fixed top-24 right-4 z-20 bg-background border shadow-lg hover:bg-background/90"
+        className="fixed top-32 right-0 z-50 btn-glass-secondary border-0 shadow-lg rounded-r-none"
         onClick={() => setIsRightDocked(!isRightDocked)}
         aria-label={isRightDocked ? "Expand right panel" : "Collapse right panel"}
       >
@@ -1098,9 +1194,9 @@ const AIRecommender = ({
       <div className="flex flex-1 overflow-hidden">
         <div
           className="h-full flex flex-col relative transition-all duration-150 ease-in-out"
-          style={{ 
-            width: `${widths.left}%`, 
-            minWidth: widths.left === 0 ? "0%" : "7%", 
+          style={{
+            width: `${widths.left}%`,
+            minWidth: widths.left === 0 ? "0%" : "7%",
             willChange: "width",
             overflow: "hidden"
           }}
@@ -1118,22 +1214,21 @@ const AIRecommender = ({
             onFieldDescriptionsChange={handleFieldDescriptionsChange}
           />
         </div>
- 
+
         {widths.left > 0 && (
           <div
-            className={`w-1.5 cursor-col-resize transition-colors duration-150 ease-in-out ${
-              draggingHandle === "left"
-                ? "bg-blue-500"
-                : "bg-border hover:bg-blue-500"
-            }`}
+            className={`w-1.5 cursor-col-resize transition-colors duration-150 ease-in-out ${draggingHandle === "left"
+              ? "bg-[#5FB3E6]"
+              : "bg-border hover:bg-[#5FB3E6]"
+              }`}
             style={{ height: "100%", zIndex: 20 }}
             onMouseDown={(e) => handleMouseDown(e, "left")}
           />
         )}
- 
+
         <div
-          className="h-full transition-all duration-150 ease-in-out overflow-auto flex flex-col"
-          style={{ width: `${100 - (widths.left > 0 ? widths.left : 0) - (widths.right > 0 ? widths.right : 0)}%`, minWidth: "10%", willChange: "width" }}
+          className="h-full transition-all duration-150 ease-in-out overflow-auto flex flex-col glass-sidebar"
+          style={{ width: `${100 - (widths.left > 0 ? widths.left : 0) - (widths.right > 0 ? widths.right : 0)}%`, minWidth: "5%", willChange: "width" }}
         >
           <ChatInterface
             messages={state.messages}
@@ -1151,24 +1246,23 @@ const AIRecommender = ({
             searchSessionId={searchSessionId}
           />
         </div>
- 
+
         {widths.right > 0 && (
           <div
-            className={`w-1.5 cursor-col-resize transition-colors duration-150 ease-in-out ${
-              draggingHandle === "right"
-                ? "bg-blue-500"
-                : "bg-border hover:bg-blue-500"
-            }`}
+            className={`w-1.5 cursor-col-resize transition-colors duration-150 ease-in-out ${draggingHandle === "right"
+              ? "bg-[#5FB3E6]"
+              : "bg-border hover:bg-[#5FB3E6]"
+              }`}
             style={{ height: "100%", zIndex: 20 }}
             onMouseDown={(e) => handleMouseDown(e, "right")}
           />
         )}
- 
+
         <div
           className="h-full transition-all duration-150 ease-in-out"
-          style={{ 
-            width: `${widths.right}%`, 
-            minWidth: widths.right === 0 ? "0%" : "7%", 
+          style={{
+            width: `${widths.right}%`,
+            minWidth: widths.right === 0 ? "0%" : "7%",
             willChange: "width",
             overflow: "hidden"
           }}
@@ -1187,5 +1281,5 @@ const AIRecommender = ({
     </div>
   );
 };
- 
+
 export default AIRecommender;

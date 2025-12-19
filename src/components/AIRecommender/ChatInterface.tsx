@@ -15,17 +15,17 @@ interface ChatInterfaceProps {
   inputValue: string;
   setInputValue: (value: string) => void;
   currentStep:
-    | "greeting"
-    | "initialInput"
-    | "awaitMissingInfo"
-    | "awaitAdditionalAndLatestSpecs"
-    | "awaitAdvancedSpecs"
-    | "confirmAfterMissingInfo"
-    | "showSummary"
-    | "finalConfirmation"
-    | "finalAnalysis"
-    | "analysisError"
-    | "default";
+  | "greeting"
+  | "initialInput"
+  | "awaitMissingInfo"
+  | "awaitAdditionalAndLatestSpecs"
+  | "awaitAdvancedSpecs"
+  | "confirmAfterMissingInfo"
+  | "showSummary"
+  | "finalConfirmation"
+  | "finalAnalysis"
+  | "analysisError"
+  | "default";
   isValidationComplete: boolean;
   productType: string | null;
   collectedData: { [key: string]: string };
@@ -33,6 +33,89 @@ interface ChatInterfaceProps {
   onRetry: () => void;
   searchSessionId?: string; // Optional session ID for debugging
 }
+
+interface MessageRowProps {
+  message: ChatMessage;
+  isHistory: boolean;
+  renderVendorAnalysisStatus: (message: ChatMessage) => React.ReactNode;
+  formatTimestamp: (ts: any) => string;
+}
+
+const MessageRow = ({ message, isHistory, renderVendorAnalysisStatus, formatTimestamp }: MessageRowProps) => {
+  const [isVisible, setIsVisible] = useState(isHistory);
+
+  useEffect(() => {
+    if (!isHistory) {
+      const delay = message.type === "user" ? 200 : 0;
+      const timer = setTimeout(() => {
+        setIsVisible(true);
+      }, delay);
+      return () => clearTimeout(timer);
+    }
+  }, [isHistory, message.type]);
+
+  return (
+    <div
+      className={`flex ${message.type === "user" ? "justify-end" : "justify-start"
+        }`}
+    >
+      <div
+        className={`max-w-[80%] flex items-start space-x-2 ${message.type === "user" ? "flex-row-reverse space-x-reverse" : ""
+          }`}
+      >
+        <div
+          className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center ${message.type === "user"
+            ? "bg-transparent text-white"
+            : "bg-transparent"
+            }`}
+        >
+          {message.type === "user" ? (
+            <img
+              src="/icon-user-3d.png"
+              alt="User"
+              className="w-10 h-10 object-contain"
+            />
+          ) : (
+            <img
+              src="/icon-engenie.png"
+              alt="Assistant"
+              className="w-14 h-14 object-contain"
+            />
+          )}
+        </div>
+        <div className="flex-1">
+          <div
+            className={`break-words ${message.type === "user"
+              ? "glass-bubble-user"
+              : "glass-bubble-assistant"
+              }`}
+            style={{
+              opacity: isVisible ? 1 : 0,
+              transform: isVisible ? "scale(1)" : "scale(0.8)",
+              transformOrigin: message.type === "user" ? "top right" : "top left",
+              transition: "opacity 0.8s ease-out, transform 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275)"
+            }}
+          >
+            <div>
+              <ReactMarkdown>{message.content}</ReactMarkdown>
+            </div>
+            {renderVendorAnalysisStatus(message)}
+          </div>
+          <p
+            className={`text-xs text-muted-foreground mt-1 px-1 ${message.type === "user" ? "text-right" : ""
+              }`}
+            style={{
+              opacity: isVisible ? 1 : 0,
+              transition: "opacity 0.8s ease 0.3s"
+            }}
+          >
+            {formatTimestamp(message.timestamp)}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const ChatInterface = ({
   messages,
@@ -52,17 +135,39 @@ const ChatInterface = ({
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isHistoryRef = useRef(true);
+
+  // Set isHistory to false after initial mount so new messages animate
+  useEffect(() => {
+    // Small timeout to ensure first render completes before we switch mode
+    const timer = setTimeout(() => {
+      isHistoryRef.current = false;
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, []);
 
   const [activeDescription, setActiveDescription] = useState<string | null>(null);
+  const [showThinking, setShowThinking] = useState(false);
+
+  useEffect(() => {
+    if (isLoading) {
+      const timer = setTimeout(() => {
+        setShowThinking(true);
+      }, 600);
+      return () => clearTimeout(timer);
+    } else {
+      setShowThinking(false);
+    }
+  }, [isLoading]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isLoading]);
+  }, [messages, isLoading, showThinking]);
 
   useEffect(() => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+      textareaRef.current.style.height = "40px";
+      textareaRef.current.style.height = `${Math.max(40, textareaRef.current.scrollHeight)}px`;
     }
   }, [inputValue]);
 
@@ -71,6 +176,25 @@ const ChatInterface = ({
       .replace(/\_/g, " ")
       .replace(/-/g, " ")
       .replace(/\b\w/g, (l) => l.toUpperCase());
+  // ... existing code ...
+  {
+    showThinking && !isStreaming && (
+      <div className="flex justify-start">
+        <div className={`max-w-[80%] flex items-start space-x-2`}>
+          <div className="flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center bg-transparent">
+            <img
+              src="/icon-engenie.png"
+              alt="Assistant"
+              className="w-14 h-14 object-contain"
+            />
+          </div>
+          <div className="p-3 rounded-lg">
+            <BouncingDots />
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const formatTimestamp = (ts: any) => {
     if (!ts) return "";
@@ -198,82 +322,38 @@ const ChatInterface = ({
   ];
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-background">
+    <div className="flex-1 flex flex-col h-full bg-transparent relative">
       {/* Debug session indicator - can be removed in production
       {searchSessionId && (
         <div className="text-xs text-gray-500 px-4 py-1 bg-gray-50 border-b">
           Session: {searchSessionId.slice(-8)}
         </div>
       )} */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-no-scrollbar">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-no-scrollbar pb-32">
         {messages.length === 0 ? (
           <div className="text-center p-6">
             {/* Heading removed - now shown in Requirements page */}
           </div>
         ) : (
           messages.map((message) => (
-            <div
+            <MessageRow
               key={message.id}
-              className={`flex ${
-                message.type === "user" ? "justify-end" : "justify-start"
-              }`}
-            >
-              <div
-                className={`max-w-[80%] flex items-start space-x-2 ${
-                  message.type === "user" ? "flex-row-reverse space-x-reverse" : ""
-                }`}
-              >
-                <div
-                  className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-                    message.type === "user"
-                      ? "bg-ai-primary text-white"
-                      : "bg-transparent"
-                  }`}
-                >
-                  {message.type === "user" ? (
-                    <User className="h-4 w-4" />
-                  ) : (
-                    <img 
-                      src="/remove_that_circle_also-removebg-preview.png" 
-                      alt="Assistant"
-                      className="w-8 h-8 object-contain"
-                    />
-                  )}
-                </div>
-                <div className="flex-1">
-                  <div
-                    className={`p-3 rounded-lg break-words ${
-                      message.type === "user"
-                        ? "bg-ai-primary text-white"
-                        : "bg-card border border-border shadow-sm"
-                    }`}
-                  >
-                    <div>
-                      <ReactMarkdown>{message.content}</ReactMarkdown>
-                    </div>
-                    {renderVendorAnalysisStatus(message)}
-                  </div>
-                  <p
-                    className={`text-xs text-muted-foreground mt-1 px-1 ${
-                      message.type === "user" ? "text-right" : ""
-                    }`}
-                  >
-                    {formatTimestamp(message.timestamp)}
-                  </p>
-                </div>
-              </div>
-            </div>
+              message={message}
+              isHistory={isHistoryRef.current}
+              renderVendorAnalysisStatus={renderVendorAnalysisStatus}
+              formatTimestamp={formatTimestamp}
+            />
           ))
         )}
 
-        {isLoading && !isStreaming && (
+        {showThinking && !isStreaming && (
           <div className="flex justify-start">
-            <div className="max-w-[80%] flex items-start space-x-2">
-              <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-transparent">
-                <img 
-                  src="/remove_that_circle_also-removebg-preview.png" 
+            <div className={`max-w-[80%] flex items-start space-x-2`}>
+              <div className="flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center bg-transparent">
+                <img
+                  src="/icon-engenie.png"
                   alt="Assistant"
-                  className="w-8 h-8 object-contain"
+                  className="w-14 h-14 object-contain"
                 />
               </div>
               <div className="p-3 rounded-lg">
@@ -320,32 +400,50 @@ const ChatInterface = ({
       )}
       */}
 
-      <div className="border-t border-border p-4 bg-background">
-        <div className="flex space-x-3">
-          <textarea
-            ref={textareaRef}
-            placeholder="Type your message here..."
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            className="flex-1 min-h-[60px] resize-none bg-white border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-            style={{ 
-              fontSize: '16px',
-              fontFamily: 'inherit',
-              lineHeight: '1.5'
-            }}
-          />
-          <Button
-            onClick={handleSend}
-            disabled={!inputValue.trim() || isLoading}
-            className="w-14 h-14 p-0 rounded-full flex items-center justify-center btn-primary"
-          >
-            {isLoading ? (
-              <Loader2 className="h-6 w-6 animate-spin text-white" />
-            ) : (
-              <Send className="h-6 w-6 text-white" />
-            )}
-          </Button>
+      <div className="p-4 bg-transparent absolute bottom-0 w-full z-10">
+        <div className="max-w-4xl mx-auto">
+          <div className="relative group">
+            <div className={`relative w-full rounded-[26px] transition-all duration-300 focus-within:ring-2 focus-within:ring-primary/50 focus-within:border-transparent hover:scale-[1.02]`}
+              style={{
+                boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)',
+                WebkitBackdropFilter: 'blur(12px)',
+                backdropFilter: 'blur(12px)',
+                backgroundColor: '#ffffff',
+                border: '1px solid rgba(255, 255, 255, 0.4)',
+                color: 'rgba(0, 0, 0, 0.8)'
+              }}>
+              <textarea
+                ref={textareaRef}
+                placeholder="Type your message here..."
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                className="w-full bg-transparent border-0 focus:ring-0 focus:outline-none px-4 py-2.5 pr-12 text-sm resize-none min-h-[40px] max-h-[200px] leading-relaxed flex items-center custom-no-scrollbar"
+                style={{
+                  fontSize: '16px',
+                  fontFamily: 'inherit',
+                  boxShadow: 'none',
+                  overflowY: 'auto'
+                }}
+              />
+
+              <div className="absolute bottom-1.5 right-1.5">
+                <Button
+                  onClick={handleSend}
+                  disabled={!inputValue.trim() || isLoading}
+                  className={`w-8 h-8 p-0 rounded-full flex items-center justify-center transition-all duration-300 hover:bg-transparent ${!inputValue.trim() ? 'text-muted-foreground' : 'text-primary hover:scale-110'}`}
+                  variant="ghost"
+                  size="icon"
+                >
+                  {isLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

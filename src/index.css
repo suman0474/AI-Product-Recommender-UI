@@ -2,118 +2,100 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
-
 @layer base {
   :root {
-    /* Light theme to match screenshots */
-    --background: 220 100% 98%;
-    --foreground: 222 47% 11%;
+    /* 
+      1. Primary Copilot Blue (Headlines/Text/Emphasis) -> #0F6CBD
+      HSL Approx: 208, 86%, 42%
+    */
+    --primary: 208 86% 42%;
+    --primary-foreground: 0 0% 100%;
+
+    /* 
+      2. Secondary Soft Blue (UI Elements/Buttons) -> #5FB3E6
+      HSL Approx: 205 74% 64% 
+    */
+    --secondary: 205 74% 64%;
+    --secondary-foreground: 208 86% 20%;
+
+    /* Background Colors */
+    --background: 200 64% 98%;
+    /* Very light blue tint #F5FAFC */
+    --foreground: 208 86% 20%;
+    /* Dark blue text */
 
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 208 86% 20%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover-foreground: 208 86% 20%;
 
-    /* Primary is deep navy for CTA like "Sign In" and badge */
-    --primary: 222 40% 14%;
-    --primary-foreground: 210 40% 98%;
+    --muted: 210 20% 96%;
+    --muted-foreground: 210 10% 46%;
+    /* #5E6A75 */
 
-    /* Secondary is subtle slate background */
-    --secondary: 220 23% 97%;
-    --secondary-foreground: 222 47% 11%;
+    --accent: 205 74% 64%;
+    --accent-foreground: 208 86% 20%;
 
-    --muted: 220 20% 96%;
-    --muted-foreground: 220 9% 46%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
 
-    --accent: 220 23% 97%;
-    --accent-foreground: 222 47% 11%;
+    --border: 210 20% 90%;
+    --input: 210 20% 90%;
+    --ring: 208 86% 42%;
 
-    --destructive: 0 72% 50%;
-    --destructive-foreground: 0 0% 100%;
+    --radius: 1.25rem;
+    /* 20px */
 
-    --border: 220 13% 90%;
-    --input: 220 13% 92%;
-    --ring: 220 94% 65%;
+    /* Glassmorphism Variables */
+    --glass-bg: rgba(255, 255, 255, 0.55);
+    --glass-border: rgba(255, 255, 255, 0.4);
+    --glass-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+    --glass-blur: 20px;
 
-    --radius: 0.75rem;
+    /* Gradients */
+    --gradient-copilot-accent: linear-gradient(135deg, #7C6CFF, #4ED8A0, #FFD24A, #FF6A9F);
 
-    /* Brand/gradient hues used in hero buttons */
-    --ai-primary: 220 94% 65%; /* blue-500 */
-    --ai-primary-glow: 210 94% 61%; /* lighter blue */
-    --ai-secondary: 220 94% 65%;
-    --ai-accent: 222 40% 14%;
-    --ai-success: 142 71% 45%;
-    --ai-success-light: 142 45% 92%;
-    --ai-warning: 38 92% 50%;
-    --ai-warning-light: 48 100% 96%;
-    --ai-error: 0 84% 60%;
-    --ai-error-light: 0 100% 97%;
-    --ai-blue: 220 94% 65%; /* changed from purple to blue */
-    --ai-light-blue: 210 85% 70%; /* changed from pink to light blue */
-    
-    /* Soft gradients for page and components */
-    --gradient-primary: linear-gradient(135deg, hsl(220 94% 65%), hsl(210 94% 61%));
-    --gradient-secondary: linear-gradient(135deg, hsl(220 100% 98%), hsl(216 100% 97%));
-    --gradient-success: linear-gradient(135deg, hsl(142 71% 45%), hsl(151 55% 52%));
-    --gradient-card: linear-gradient(145deg, hsl(0 0% 100%), hsl(220 23% 98%));
-    --gradient-border: linear-gradient(90deg, hsl(220 94% 65% / 0.35), hsl(210 94% 61% / 0.35));
-    --gradient-page: radial-gradient(1200px 400px at -10% -10%, hsl(220 94% 65% / 0.07), transparent 60%), radial-gradient(1200px 400px at 110% -10%, hsl(210 94% 61% / 0.07), transparent 60%), linear-gradient(180deg, hsl(220 100% 99%), hsl(220 95% 96%));
-    
-    /* Soft shadows */
-    --shadow-card: 0 10px 20px hsl(220 40% 2% / 0.05), 0 2px 6px hsl(220 40% 2% / 0.06);
-    --shadow-glow: 0 8px 24px hsl(220 94% 65% / 0.25);
-    --shadow-glow-blue: 0 8px 24px hsl(220 94% 65% / 0.25);
-    --shadow-glow-light-blue: 0 8px 24px hsl(210 85% 70% / 0.25);
-    --shadow-glow-success: 0 8px 24px hsl(142 71% 45% / 0.25);
-    
-    /* Animations */
-    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    --transition-glow: all 0.3s ease-in-out;
-
-    /* Sidebar tokens (kept for completeness) */
-    --sidebar-background: 220 23% 97%;
-    --sidebar-foreground: 222 47% 11%;
-    --sidebar-primary: 222 40% 14%;
-    --sidebar-primary-foreground: 210 40% 98%;
-    --sidebar-accent: 220 23% 97%;
-    --sidebar-accent-foreground: 222 47% 11%;
-    --sidebar-border: 220 13% 90%;
-    --sidebar-ring: 220 94% 65%;
+    /* Main Canvas Background Gradient - Dark -> Wide Light Middle -> Dark */
+    --gradient-app-bg: linear-gradient(to bottom left,
+        #7AB2D6 0%,
+        #C5E5F5 35%,
+        #C5E5F5 65%,
+        #7AB2D6 100%);
   }
 
   .dark {
-    /* Already dark theme - keeping same values */
-    --background: 210 15% 8%;
+    /* Dark Theme - Deep Blue/Slate */
+    --background: 215 28% 10%;
     --foreground: 210 40% 98%;
-    --card: 210 15% 12%;
+
+    --card: 217 33% 15%;
     --card-foreground: 210 40% 98%;
-    --popover: 210 15% 12%;
+
+    --popover: 217 33% 15%;
     --popover-foreground: 210 40% 98%;
-    --primary: 217 91% 60%;
-    --primary-foreground: 210 15% 8%;
-    --secondary: 210 15% 18%;
+
+    --primary: 205 74% 64%;
+    /* Lighter blue for dark mode */
+    --primary-foreground: 208 86% 20%;
+
+    --secondary: 217 33% 20%;
     --secondary-foreground: 210 40% 98%;
-    --muted: 210 15% 15%;
-    --muted-foreground: 215.4 16.3% 56.9%;
-    --accent: 210 15% 18%;
+
+    --muted: 217 33% 20%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 217 33% 20%;
     --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 50.6%;
+
+    --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
-    --border: 210 15% 20%;
-    --input: 210 15% 18%;
-    --ring: 217 91% 60%;
-    --sidebar-background: 210 15% 10%;
-    --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 217 91% 60%;
-    --sidebar-primary-foreground: 210 15% 8%;
-    --sidebar-accent: 210 15% 18%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 210 15% 20%;
-    --sidebar-ring: 217 91% 60%;
+
+    --border: 217 33% 20%;
+    --input: 217 33% 20%;
+    --ring: 205 74% 64%;
+
+    --gradient-app-bg: linear-gradient(to top right, #0f172a 0%, #1e3a8a 100%);
   }
 }
 
@@ -125,65 +107,334 @@ All colors MUST be HSL.
   body {
     @apply bg-background text-foreground antialiased;
   }
+
   html {
-    font-family: "Inter", ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    font-family: "Segoe UI Variable", "Segoe UI", "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    color: #0F6CBD;
+    /* Copilot Primary Blue */
+    @apply font-semibold tracking-tight;
+  }
+
+  .dark h1,
+  .dark h2,
+  .dark h3,
+  .dark h4,
+  .dark h5,
+  .dark h6 {
+    @apply text-foreground;
+  }
+
+  /* Hide default password toggle in Edge/IE to avoid duplicate icons */
+  input[type="password"]::-ms-reveal,
+  input[type="password"]::-ms-clear {
+    display: none;
   }
 }
-/* For specific containers when needed */
-.custom-no-scrollbar,
-.scrollbar-hide {
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;     /* Firefox */
+
+.custom-no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
-.custom-no-scrollbar::-webkit-scrollbar,
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;  /* Chrome, Safari, Opera */
+.custom-no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
-/* Components matching the screenshots */
 @layer components {
-  .app-gradient {
-    background: var(--gradient-page);
+
+  /* 
+    2. Background Styling
+  */
+  .app-glass-gradient {
+    background: var(--gradient-app-bg);
+    min-height: 100vh;
+    background-attachment: fixed;
+    position: relative;
+    z-index: 0;
   }
 
-  .btn-primary {
-    @apply text-white font-medium shadow-md rounded-lg transition-colors duration-200;
-    background: var(--gradient-primary);
-    box-shadow: var(--shadow-glow);
-  }
-  .btn-primary:hover {
-    filter: brightness(0.98);
-  }
-
-  .btn-secondary {
-    @apply bg-white text-foreground border rounded-lg font-medium transition-colors duration-200;
-    border-color: hsl(var(--border));
-  }
-  .btn-secondary:hover {
-    @apply bg-muted;
+  .app-glass-gradient::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--gradient-app-bg);
+    z-index: -1;
   }
 
-  .surface-card {
-    @apply bg-card rounded-xl text-foreground;
-    box-shadow: var(--shadow-card);
+  /* 
+    3. Glass Panels (Cards / UI Surfaces)
+  */
+  .glass-card {
+    background: rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-radius: 20px;
+    /* 16-24px rounded corners */
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+    /* Inner glow */
+    transition: all 0.3s ease;
   }
 
-  .form-input {
-    @apply w-full rounded-lg bg-white text-foreground placeholder:text-muted-foreground border outline-none;
-    border-color: hsl(var(--border));
-  }
-  .form-input:focus {
-    @apply ring-2;
-    --tw-ring-color: hsl(var(--ring));
+  .glass-card:hover {
+    background: rgba(255, 255, 255, 0.65);
+    transform: translateY(-2px);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5), 0 8px 32px rgba(0, 0, 0, 0.05);
   }
 
-  /* Cross-browser gradient text helper */
-  .text-gradient {
-    background: var(--gradient-primary);
+  .dark .glass-card {
+    background: rgba(30, 41, 59, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: none;
+  }
+
+  /* 
+    Glass Header 
+  */
+  .glass-header {
+    @apply sticky top-0 z-50 w-full transition-all duration-300;
+    background: rgba(255, 255, 255, 0.4);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+  }
+
+  .dark .glass-header {
+    background: rgba(15, 23, 42, 0.6);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  /* 
+    Glass Sidebar 
+  */
+  .glass-sidebar {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-right: 1px solid rgba(255, 255, 255, 0.2);
+    border-left: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  }
+
+  .dark .glass-sidebar {
+    background: rgba(15, 23, 42, 0.6);
+    border-right: 1px solid rgba(255, 255, 255, 0.05);
+    border-left: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  /* 
+    Buttons 
+    Primary: Soft Blue #5FB3E6
+  */
+  .btn-glass-primary {
+    @apply text-white font-semibold rounded-lg transition-all duration-300 shadow-sm relative overflow-hidden;
+    background: #2B95D6;
+    /* Darker Blue default */
+    border: 1px solid rgba(255, 255, 255, 0.3);
+  }
+
+  .btn-glass-primary:hover {
+    background: #0F6CBD;
+    /* Full Dark Primary Blue on hover */
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(15, 108, 189, 0.5);
+  }
+
+  .btn-glass-secondary {
+    @apply font-medium rounded-lg transition-all duration-300;
+    background: rgba(255, 255, 255, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    color: #0F6CBD;
+    /* Primary Text Color */
+    backdrop-filter: blur(10px);
+  }
+
+  .btn-glass-secondary:hover {
+    background: rgba(255, 255, 255, 0.6);
+    border-color: #0F6CBD;
+  }
+
+  /* 
+    Inputs 
+  */
+  .form-glass-input {
+    @apply w-full rounded-xl text-foreground placeholder:text-muted-foreground outline-none transition-all duration-300 hover:scale-[1.02];
+    background: rgba(255, 255, 255, 0.5);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+  }
+
+  .form-glass-input:focus {
+    background: rgba(255, 255, 255, 0.8);
+    border-color: #5FB3E6;
+    box-shadow: 0 0 0 3px rgba(95, 179, 230, 0.2);
+  }
+
+  /* 
+    7. Pills (e.g. date badges) 
+  */
+  .glass-pill {
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(12px);
+    border-radius: 999px;
+    padding: 8px 14px;
+    color: #4A5D73;
+    font-size: 0.875rem;
+    font-weight: 500;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+  }
+
+  /* 
+    Text Gradient (Copilot style)
+  */
+  .text-gradient-copilot {
+    background: linear-gradient(135deg, #0F6CBD, #5FB3E6);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
-    -webkit-text-fill-color: transparent;
+  }
+
+  /* Transparent panel for auth pages (no blur) */
+  .glass-panel-transparent {
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+  }
+
+  /* 
+    Double Glass Sandwich (Text/Content between layers)
+  */
+  .acrylic-glass-pill {
+    position: relative;
+    /* 1. Back Glass Layer */
+    background: rgba(255, 255, 255, 0.1);
+    /* Stronger base to prevent dark background bleed */
+    backdrop-filter: blur(40px);
+    /* Heavy blur for background integration */
+    -webkit-backdrop-filter: blur(40px);
+    border-radius: 50px;
+    box-shadow:
+      0 20px 50px rgba(0, 0, 0, 0.15),
+      /* Deep outer shadow */
+      inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+    /* Edge definition */
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    isolation: isolate;
+    /* Create stacking context */
+    overflow: hidden;
+  }
+
+  /* 2. Front Glass Layer (The "Top Glass") */
+  .acrylic-glass-pill::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    /* Sits on top of content */
+    pointer-events: none;
+    /* Allows interaction with form */
+    border-radius: 50px;
+
+    /* Reflective Sheen - Softer Textures */
+    background: linear-gradient(125deg,
+        rgba(255, 255, 255, 0.3) 0%,
+        rgba(255, 255, 255, 0.1) 40%,
+        rgba(255, 255, 255, 0.05) 60%,
+        rgba(255, 255, 255, 0.15) 100%);
+
+    /* Glass Hightlight/Refraction Border */
+    box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.5), inset -1px -1px 0 rgba(255, 255, 255, 0.1);
+  }
+
+  /* 
+    Smooth Entry Animation 
+  */
+  @keyframes smoothFloatUp {
+    0% {
+      opacity: 0;
+      transform: translateY(30px) scale(0.95);
+    }
+
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  .animate-item {
+    animation: smoothFloatUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+    opacity: 0;
+  }
+
+  .stagger-1 {
+    animation-delay: 0.1s;
+  }
+
+  .stagger-2 {
+    animation-delay: 0.2s;
+  }
+
+  .stagger-3 {
+    animation-delay: 0.3s;
+  }
+
+  .stagger-4 {
+    animation-delay: 0.4s;
+  }
+
+  .stagger-5 {
+    animation-delay: 0.5s;
+  }
+
+  .stagger-6 {
+    animation-delay: 0.6s;
+  }
+
+  /* Chat Bubbles Glass Styles */
+  .glass-bubble-user {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.15));
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 18px 4px 18px 18px;
+    padding: 12px 18px;
+    color: #0F6CBD;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05), inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+  }
+
+  .glass-bubble-assistant {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.1));
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 4px 18px 18px 18px;
+    padding: 12px 18px;
+    color: #1e293b;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05), inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+  }
+
+  .dark .glass-bubble-user {
+    background: linear-gradient(135deg, rgba(15, 108, 189, 0.3), rgba(15, 108, 189, 0.1));
+    border-color: rgba(95, 179, 230, 0.3);
+    color: #fff;
+  }
+
+  .dark .glass-bubble-assistant {
+    background: linear-gradient(135deg, rgba(30, 41, 59, 0.6), rgba(30, 41, 59, 0.3));
+    border-color: rgba(255, 255, 255, 0.1);
+    color: #e2e8f0;
   }
 }

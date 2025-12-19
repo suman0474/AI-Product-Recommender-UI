@@ -94,6 +94,8 @@ export interface UserCredentials {
   username: string;
   email: string;
   password: string;
+  first_name?: string;
+  last_name?: string;
 }
 
 // New types for step-based workflow
@@ -109,15 +111,15 @@ export interface AgentResponse {
   maintainWorkflow?: boolean;
 }
 
-export type WorkflowStep = 
+export type WorkflowStep =
   | "greeting"
-  | "initialInput" 
+  | "initialInput"
   | "awaitMissingInfo"
   | "awaitAdditionalAndLatestSpecs"
   | "awaitAdvancedSpecs"
   | "confirmAfterMissingInfo"
-  | "showSummary" 
-  | "finalAnalysis" 
+  | "showSummary"
+  | "finalAnalysis"
   | "analysisError"
   | "default";
 
@@ -168,10 +170,22 @@ export interface IdentifiedAccessory {
 }
 
 export interface InstrumentIdentificationResult {
+  // Response type indicator
+  response_type?: 'greeting' | 'question' | 'requirements' | 'error';
+  responseType?: 'greeting' | 'question' | 'requirements' | 'error';
+
+  // For greeting and question responses
+  message?: string;
+  isIndustrial?: boolean;
+
+  // For requirements response
   projectName?: string;
   instruments: IdentifiedInstrument[];
   accessories?: IdentifiedAccessory[];
   summary: string;
+
+  // For error responses
+  error?: string;
 }
 
 // New interfaces for image API integration

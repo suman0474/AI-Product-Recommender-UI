@@ -26,21 +26,19 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen app-gradient flex items-center justify-center px-6">
-      <div className="w-full max-w-md">
-        {/* Back Button */}
-        <Button
-          variant="ghost"
-          onClick={() => navigate('/')}
-          className="mb-6 text-muted-foreground hover:text-foreground transition-colors duration-200"
-        >
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Home
-        </Button>
-
-        <div className="surface-card p-8 rounded-2xl">
+    <div className="min-h-screen app-glass-gradient flex items-center justify-center px-6">
+      <div className="w-full max-w-md transition-all duration-300 hover:scale-[1.02]">
+        <div className="acrylic-glass-pill backdrop-blur-3xl p-8 relative transition-all duration-300 hover:shadow-2xl">
+          {/* Back Button - Top Left */}
+          <button
+            onClick={() => navigate('/')}
+            className="absolute top-10 left-8 text-muted-foreground hover:text-foreground transition-colors p-2 -ml-2 -mt-2 z-50"
+          // title="Back to Home"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
           {/* Header */}
-          <div className="text-center space-y-4">
+          <div className="text-center space-y-4 animate-item stagger-1">
             <div className="w-20 h-20 mx-auto">
               <img src="/ChatGPT Image Nov 11, 2025, 11_58_30 AM.png" alt="Logo" className="w-full h-full rounded-full object-cover shadow" />
             </div>
@@ -58,7 +56,7 @@ const Login = () => {
           <div>
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Username */}
-              <div className="space-y-2">
+              <div className="space-y-2 animate-item stagger-2">
                 <Label htmlFor="username" className="font-medium">
                   Username
                 </Label>
@@ -68,31 +66,31 @@ const Login = () => {
                   placeholder="Enter your username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="form-input rounded-xl"
+                  className="form-glass-input rounded-xl"
                   required
                 />
               </div>
 
               {/* Password */}
-              <div className="space-y-2">
+              <div className="space-y-2 animate-item stagger-3">
                 <Label htmlFor="password" className="font-medium">
                   Password
                 </Label>
-                <div className="relative">
+                <div className="relative hover:scale-[1.02] transition-all duration-300">
                   <Input
                     id="password"
                     type={showPassword ? 'text' : 'password'}
                     placeholder="Enter your password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="form-input pr-12 rounded-xl"
+                    className="form-glass-input pr-12 rounded-xl hover:scale-100"
                     required
                   />
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="absolute right-0 top-0 h-full px-3 text-muted-foreground hover:text-foreground transition-colors"
+                    className="absolute right-0 top-0 h-full px-3 text-muted-foreground hover:text-foreground transition-colors hover:bg-transparent transition-transform hover:scale-110 active:scale-95"
                     onClick={() => setShowPassword(!showPassword)}
                   >
                     {showPassword ? (
@@ -107,7 +105,7 @@ const Login = () => {
               {/* Submit Button */}
               <button
                 type="submit"
-                className="btn-primary w-full font-semibold rounded-xl px-4 py-3"
+                className="btn-glass-primary w-full font-semibold rounded-xl px-4 py-3 animate-item stagger-4"
                 disabled={isLoading || !username.trim() || !password.trim()}
               >
                 {isLoading ? (
@@ -118,14 +116,17 @@ const Login = () => {
               </button>
 
               {/* Signup link */}
-              <div className="text-center pt-4">
+              <div className="text-center pt-4 animate-item stagger-5">
                 <p className="text-muted-foreground text-sm">
                   Don't have an account?{' '}
                   <Link
                     to="/signup"
-                    className="font-semibold"
-                    >
-                    <span className="text-blue-600">Sign up</span>
+                    className="font-semibold group relative inline-block"
+                  >
+                    <span className="relative z-10 text-secondary group-hover:text-primary transition-colors duration-200">
+                      Sign up
+                    </span>
+                    <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-primary group-hover:w-full transition-all duration-300 ease-out"></span>
                   </Link>
                 </p>
               </div>

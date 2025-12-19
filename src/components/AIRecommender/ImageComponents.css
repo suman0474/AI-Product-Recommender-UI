@@ -31,6 +31,7 @@
   height: 200px;
   object-fit: cover;
   border-radius: 8px;
+  image-rendering: auto;
 }
 
 .product-image-thumbnail {
@@ -40,6 +41,12 @@
   border-radius: 6px;
   cursor: pointer;
   flex-shrink: 0;
+  image-rendering: auto;
+  transition: opacity 0.2s ease;
+}
+
+.product-image-thumbnail:hover {
+  opacity: 0.8;
 }
 
 /* Quality badge styles */
@@ -216,6 +223,7 @@
   width: 100%;
   height: 200px;
   object-fit: cover;
+  image-rendering: auto;
 }
 
 .gallery-item-info {
@@ -299,6 +307,48 @@
   font-weight: 500;
 }
 
+/* Hover preview modal container - UPDATED */
+.hover-preview-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(255, 255, 255, 0.98);
+  padding: 24px;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  z-index: 9999;
+  max-width: 600px;
+  max-height: 600px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border: 2px solid rgba(0,0,0,0.1);
+}
+
+.dark .hover-preview-modal {
+  background: rgba(30, 41, 59, 0.98);
+  border-color: rgba(71, 85, 105, 0.5);
+}
+
+/* Preview modal image styles - UPDATED */
+.preview-modal-image {
+  max-width: 550px;
+  max-height: 550px;
+  object-fit: contain;
+  border-radius: 12px;
+  image-rendering: auto;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+}
+
+/* For high DPI displays */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  .preview-modal-image {
+    image-rendering: -webkit-optimize-contrast;
+  }
+}
+
 /* Animations */
 @keyframes pulse {
   0%, 100% {
@@ -324,6 +374,17 @@
   .image-gallery-modal {
     max-width: 95vw;
   }
+  
+  .hover-preview-modal {
+    max-width: 90vw;
+    max-height: 80vh;
+    padding: 16px;
+  }
+  
+  .preview-modal-image {
+    max-width: 100%;
+    max-height: 100%;
+  }
 }
 
 @media (max-width: 480px) {
@@ -336,16 +397,17 @@
   .gallery-item img {
     height: 120px;
   }
+  
+  .hover-preview-modal {
+    max-width: 95vw;
+    max-height: 70vh;
+    padding: 12px;
+  }
 }
 
 /* Hover effects */
 .gallery-item:hover {
   transform: translateY(-2px);
-  transition: transform 0.2s ease;
-}
-
-.product-image-thumbnail:hover {
-  transform: scale(1.05);
   transition: transform 0.2s ease;
 }
 
@@ -372,5 +434,9 @@
   
   .image-skeleton {
     border: 1px solid #666;
+  }
+  
+  .preview-modal-image {
+    border: 1px solid currentColor;
   }
 }
