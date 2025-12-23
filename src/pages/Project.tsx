@@ -1332,13 +1332,13 @@ const Project = () => {
                                             <div className="flex items-center gap-2">
                                                 <TabsTrigger
                                                     value="project"
-                                                    className="rounded-lg px-4 py-2 text-base font-bold text-foreground border-2 border-border data-[state=active]:shadow-md whitespace-nowrap flex-shrink-0"
+                                                    className="rounded-lg px-4 py-2 text-base font-bold text-foreground border-2 border-transparent bg-transparent data-[state=active]:border-white/30 data-[state=active]:bg-white/20 data-[state=active]:backdrop-blur-md whitespace-nowrap flex-shrink-0"
                                                 >
                                                     {!editingProjectName ? (
                                                         <span className="inline-flex items-center gap-2">
                                                             <span className="block">{projectName}</span>
                                                             {currentProjectId && (
-                                                                <span className="ml-2 text-xs bg-[#EAF6FB] dark:bg-sky-900 text-[#0F6CBD] dark:text-sky-200 px-2 py-1 rounded-full">
+                                                                <span className="ml-2 text-[10px] text-[#0F6CBD] uppercase tracking-wider font-medium">
                                                                     Saved
                                                                 </span>
                                                             )}
@@ -1619,10 +1619,8 @@ const Project = () => {
 
                                     {!showResults && (
                                         <div className="text-center space-y-4 mb-8">
-                                            <h2 className="flex items-center justify-center gap-1">
-                                                <span className="text-2xl font-normal text-muted-foreground">Welcome,</span>
-                                                <span className="text-primary font-bold text-3xl">{user?.firstName || user?.username || 'User'}</span>
-                                                <span className="text-2xl font-normal text-muted-foreground">! what are your requirements</span>
+                                            <h2 className="text-3xl font-normal text-muted-foreground">
+                                                Welcome, <span className="text-primary font-bold text-4xl">{user?.firstName || user?.username || 'User'}</span>! what are your requirements
                                             </h2>
                                         </div>
                                     )}
@@ -1630,7 +1628,7 @@ const Project = () => {
                                     {/* Input Form (always visible) */}
                                     <form onSubmit={handleSubmit} className="space-y-4">
                                         <div className="relative group">
-                                            <div className={`relative w-full rounded-[26px] transition-all duration-300 focus-within:ring-2 focus-within:ring-primary/50 focus-within:border-transparent hover:scale-[1.02]`}
+                                            <div className={`relative w-full rounded-[26px] transition-all duration-300 focus-within:ring-2 focus-within:ring-primary/50 focus-within:border-transparent hover:scale-[1.02] flex flex-col`}
                                                 style={{
                                                     boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)',
                                                     WebkitBackdropFilter: 'blur(12px)',
@@ -1643,7 +1641,7 @@ const Project = () => {
                                                     value={requirements}
                                                     onChange={(e) => setRequirements(e.target.value)}
                                                     onKeyDown={handleKeyPress}
-                                                    className={`w-full bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground/70 resize-none text-base p-4 md:p-6 text-lg leading-relaxed shadow-none custom-no-scrollbar ${showResults ? 'min-h-[120px]' : 'min-h-[200px]'} pb-16`}
+                                                    className={`w-full bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground/70 resize-none text-base p-4 md:p-6 text-lg leading-relaxed shadow-none custom-no-scrollbar ${showResults ? 'min-h-[80px]' : 'min-h-[120px]'}`}
                                                     style={{
                                                         backgroundColor: 'transparent',
                                                         boxShadow: 'none',
@@ -1653,8 +1651,8 @@ const Project = () => {
                                                     disabled={isLoading}
                                                 />
 
-                                                {/* File Display & Buttons Bar */}
-                                                <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between">
+                                                {/* File Display & Buttons Bar - Footer inside the glass box */}
+                                                <div className="flex items-center justify-between px-4 pb-4 md:px-6 md:pb-6 pt-2">
                                                     <div className="flex items-center gap-2">
                                                         {/* Attached File Badge */}
                                                         {attachedFile && (
@@ -1684,12 +1682,10 @@ const Project = () => {
                                                             onChange={handleFileSelect}
                                                             className="hidden"
                                                         />
-
                                                     </div>
 
                                                     {/* Action Buttons */}
                                                     <div className="flex items-center gap-1">
-                                                        {/* Attach Button */}
                                                         {/* Attach Button */}
                                                         <Button
                                                             type="button"
@@ -1785,7 +1781,7 @@ const Project = () => {
                                                                         <img
                                                                             src={genericImages[instrument.productName]}
                                                                             alt={`Generic ${instrument.category}`}
-                                                                            className="w-48 h-48 object-contain rounded-lg shadow-md mix-blend-multiply"
+                                                                            className="w-48 h-48 object-contain rounded-lg mix-blend-multiply"
                                                                             onError={(e) => {
                                                                                 // Hide image if it fails to load
                                                                                 e.currentTarget.style.display = 'none';
@@ -1863,7 +1859,7 @@ const Project = () => {
                                                                         <img
                                                                             src={genericImages[accessory.accessoryName]}
                                                                             alt={`Generic ${accessory.category}`}
-                                                                            className="w-48 h-48 object-contain rounded-lg shadow-md mix-blend-multiply"
+                                                                            className="w-48 h-48 object-contain rounded-lg mix-blend-multiply"
                                                                             onError={(e) => {
                                                                                 // Hide image if it fails to load
                                                                                 e.currentTarget.style.display = 'none';

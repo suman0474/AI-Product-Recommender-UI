@@ -21,7 +21,7 @@ export function ProfileEditDialog({ open, onOpenChange }: ProfileEditDialogProps
 
     // New fields
     const [companyName, setCompanyName] = useState("");
-    const [category, setCategory] = useState("");
+    const [location, setLocation] = useState("");
     const [strategy, setStrategy] = useState("");
     const [file, setFile] = useState<File | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -36,7 +36,7 @@ export function ProfileEditDialog({ open, onOpenChange }: ProfileEditDialogProps
             setLastName(user.lastName || "");
             setUsername(user.username || "");
             setCompanyName(user.companyName || "");
-            setCategory(user.category || "");
+            setLocation(user.location || "");
             setStrategy(user.strategyInterest || "");
             setFile(null); // Reset file on open
         }
@@ -64,8 +64,8 @@ export function ProfileEditDialog({ open, onOpenChange }: ProfileEditDialogProps
             formData.append('last_name', lastName);
             formData.append('username', username);
             formData.append('company_name', companyName);
-            formData.append('category', category);
-            formData.append('strategy', strategy);
+            formData.append('location', location);
+            formData.append('strategy_interest', strategy);
 
             if (file) {
                 formData.append('document', file);
@@ -156,15 +156,15 @@ export function ProfileEditDialog({ open, onOpenChange }: ProfileEditDialogProps
                             />
                         </div>
                         <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="category" className="text-center font-semibold text-[#0F6CBD] dark:text-sky-300">
-                                Category
+                            <Label htmlFor="location" className="text-center font-semibold text-[#0F6CBD] dark:text-sky-300">
+                                Location
                             </Label>
                             <Input
-                                id="category"
-                                value={category}
-                                onChange={(e) => setCategory(e.target.value)}
+                                id="location"
+                                value={location}
+                                onChange={(e) => setLocation(e.target.value)}
                                 className="col-span-3 bg-white/50 dark:bg-slate-800/40 border-white/30 dark:border-slate-700/50 focus:border-[#0F6CBD] focus:ring-[#0F6CBD]/20 rounded-xl transition-all duration-200 hover:scale-[1.02]"
-                                placeholder="Category"
+                                placeholder="Location"
                             />
                         </div>
                         <div className="grid grid-cols-4 items-start gap-4">

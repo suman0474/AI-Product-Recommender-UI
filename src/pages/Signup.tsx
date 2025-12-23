@@ -17,7 +17,7 @@ const Signup = () => {
 
   // Step 2 Fields
   const [companyName, setCompanyName] = useState('');
-  const [category, setCategory] = useState('');
+  const [location, setLocation] = useState('');
   const [strategy, setStrategy] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -78,7 +78,7 @@ const Signup = () => {
 
       // Optional fields
       if (companyName) formData.append('company_name', companyName.trim());
-      if (category) formData.append('category', category.trim());
+      if (location) formData.append('location', location.trim());
       if (strategy) formData.append('strategy', strategy.trim());
 
       if (file) {
@@ -172,8 +172,8 @@ const Signup = () => {
                   <Input id="companyName" value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="form-glass-input rounded-xl" placeholder="Acme Corp" />
                 </div>
                 <div className="space-y-2 animate-item stagger-3">
-                  <Label htmlFor="category">Category</Label>
-                  <Input id="category" value={category} onChange={(e) => setCategory(e.target.value)} className="form-glass-input rounded-xl" placeholder="Engineering" />
+                  <Label htmlFor="location">Location</Label>
+                  <Input id="location" value={location} onChange={(e) => setLocation(e.target.value)} className="form-glass-input rounded-xl" placeholder="New York" />
                 </div>
                 <div className="space-y-2 animate-item stagger-4">
                   <Label htmlFor="strategy">Strategy</Label>

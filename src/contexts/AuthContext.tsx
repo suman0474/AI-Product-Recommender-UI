@@ -13,7 +13,7 @@ interface User {
   role: "admin" | "user";        // change to union type for safety
   status: "pending" | "active" | "rejected";  // 'pending', 'active', or 'rejected'
   companyName?: string;
-  category?: string;
+  location?: string;
   strategyInterest?: string;
   documentFileId?: string;
 }

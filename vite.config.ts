@@ -23,4 +23,25 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            // Pull out the heaviest libraries into specific chunks
+            if (id.includes('jspdf')) {
+              return 'vendor-jspdf';
+            }
+            if (id.includes('html2canvas')) {
+              return 'vendor-html2canvas';
+            }
+            // Put all other small libraries into a general vendor file
+            return 'vendor';
+          }
+        },
+      },
+    },
+    // Increase limit to 1000kb to ensure the warning stays away
+    chunkSizeWarningLimit: 1000,
+  },
 }));

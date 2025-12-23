@@ -329,10 +329,25 @@ const ChatInterface = ({
           Session: {searchSessionId.slice(-8)}
         </div>
       )} */}
+      <div className="flex-none py-2 border-b border-white/10 bg-transparent z-20 flex justify-center items-center">
+        <div className="flex items-center gap-1">
+          <div className="flex items-center justify-center">
+            <img
+              src="/icon-engenie.png"
+              alt="EnGenie"
+              className="w-16 h-16 object-contain"
+            />
+          </div>
+          <h1 className="text-3xl font-bold text-[#0f172a]">
+            EnGenie
+          </h1>
+        </div>
+      </div>
+
       <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-no-scrollbar pb-32">
         {messages.length === 0 ? (
           <div className="text-center p-6">
-            {/* Heading removed - now shown in Requirements page */}
+            {/* Empty state */}
           </div>
         ) : (
           messages.map((message) => (

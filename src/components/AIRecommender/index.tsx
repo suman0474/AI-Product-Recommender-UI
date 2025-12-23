@@ -793,40 +793,21 @@ const AIRecommender = ({
                 await streamAssistantMessage(validation.validationAlert.message);
                 setCurrentStep("awaitMissingInfo");
               } else {
-                // All mandatory fields provided - fetch advanced parameters and show them
-                let advancedParams: AdvancedParametersResult | null = null;
-                try {
-                  advancedParams = await discoverAdvancedParameters(validation.productType, searchSessionId);
-                  if (advancedParams && advancedParams.uniqueParameters) {
-                    setAdvancedParameters(advancedParams);
-                    console.log('[INITIAL_INPUT] Fetched advanced parameters:', advancedParams.uniqueParameters.length);
-                  }
-                } catch (paramError) {
-                  console.warn('[INITIAL_INPUT] Could not fetch advanced parameters:', paramError);
-                }
-
-                // Format specifications list for display
-                const specsToDisplay = advancedParams?.uniqueParameters?.slice(0, 10) || [];
-                const specsListFormatted = specsToDisplay
-                  .map((s: any) => typeof s === 'string' ? s : (s.name || s.key || ''))
-                  .filter((s: string) => s)
-                  .map((s: string) => s.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()))
-                  .join(', ');
+                // All mandatory fields provided - call sales agent API first to ask about additional specs
+                // Advanced parameters will be fetched only when user says "yes" at awaitAdditionalAndLatestSpecs step
 
                 agentResponse = await generateAgentResponse(
                   "initialInputWithSpecs",
                   {
                     productType: validation.productType,
-                    requirements: flatRequirements,
-                    availableSpecs: specsListFormatted,
-                    availableParameters: advancedParams?.uniqueParameters || [],
-                    specsCount: advancedParams?.uniqueParameters?.length || 0
+                    requirements: flatRequirements
                   },
-                  `Product type detected: ${validation.productType}. Available specs: ${specsListFormatted}`,
+                  `Product type detected: ${validation.productType}. All mandatory requirements provided.`,
                   undefined,
                   searchSessionId
                 );
                 await streamAssistantMessage(agentResponse.content);
+
                 // Use LLM nextStep if provided, otherwise fall back to awaitAdditionalAndLatestSpecs
                 if (agentResponse.nextStep) setCurrentStep(agentResponse.nextStep as any);
                 else setCurrentStep("awaitAdditionalAndLatestSpecs");
@@ -855,57 +836,28 @@ const AIRecommender = ({
                 undefined,
                 searchSessionId
               );
-              await streamAssistantMessage(agentResponse.content);
 
               // Follow backend's nextStep decision
               if (agentResponse.nextStep) {
                 if (agentResponse.nextStep === "awaitAdvancedSpecs") {
-                  // User provided additional specs - process them first before moving to advanced parameters
-                  // Check if we're collecting specs (not just yes/no response)
-                  const isCollectingSpecs = !/^(yes|y|no|n|nope|skip)$/i.test(trimmedInput.trim());
-
-                  if (isCollectingSpecs) {
-                    // Process additional requirements and merge with collectedData
-                    try {
-                      const fullContextInput = `${composeUserDataString(collectedData)} ${trimmedInput}`;
-                      const { providedRequirements } = await additionalRequirements(state.productType!, fullContextInput);
-                      const newFlatRequirements = flattenRequirements(providedRequirements);
-                      const updatedData = mergeRequirementsWithSchema({ ...collectedData, ...newFlatRequirements }, state.requirementSchema!);
-                      setCollectedData(updatedData);
-                    } catch (error) {
-                      console.error("Error processing additional requirements:", error);
-                      // Continue even if processing fails
-                    }
-                  }
-
+                  // User said YES - backend already discovered parameters and formatted the response
+                  // Just stream the response which contains the parameters list
+                  await streamAssistantMessage(agentResponse.content);
                   setCurrentStep("awaitAdvancedSpecs");
-                  // Discover parameters in the background
-                  const parametersResult = await discoverAdvancedParameters(state.productType!, searchSessionId);
-                  setAdvancedParameters(parametersResult);
-
-                  // Call backend to get the formatted parameter display
-                  const advancedResponse = await generateAgentResponse(
-                    "awaitAdvancedSpecs",
-                    {
-                      productType: state.productType,
-                      availableParameters: parametersResult?.uniqueParameters || [],
-                    },
-                    "show parameters",
-                    undefined,
-                    searchSessionId
-                  );
-                  await streamAssistantMessage(advancedResponse.content);
                 } else if (agentResponse.nextStep === "showSummary") {
-                  // User said "no" - transition to summary and display it
+                  // User said "no" - stream the transition message first
+                  await streamAssistantMessage(agentResponse.content);
                   setCurrentStep("showSummary");
-                  // The backend already sent a transition message like "Understood. Let's proceed..."
-                  // Skip the intro message and don't auto-trigger analysis - wait for user confirmation
+                  // Then proceed with summary - intro was already streamed
                   await handleShowSummaryAndProceed({ introAlreadyStreamed: true, skipAnalysis: true });
                 } else {
+                  // Other transitions - stream the message
+                  await streamAssistantMessage(agentResponse.content);
                   setCurrentStep(agentResponse.nextStep as any);
                 }
               } else {
-                // Stay in current step if no nextStep provided
+                // Stay in current step if no nextStep provided - stream the message
+                await streamAssistantMessage(agentResponse.content);
                 setCurrentStep("awaitAdditionalAndLatestSpecs");
               }
             } catch (error) {
