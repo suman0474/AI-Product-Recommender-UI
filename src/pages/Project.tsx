@@ -2058,7 +2058,7 @@ const Project = () => {
                                                                 value={requirements}
                                                                 onChange={(e) => setRequirements(e.target.value)}
                                                                 onKeyDown={handleKeyPress}
-                                                                className="w-full bg-transparent border-0 focus:ring-0 focus:outline-none px-4 py-2.5 pr-12 text-sm resize-none min-h-[40px] max-h-[200px] leading-relaxed flex items-center custom-no-scrollbar"
+                                                                className="w-full bg-transparent border-0 focus:ring-0 focus:outline-none px-4 py-2.5 pr-20 text-sm resize-none min-h-[40px] max-h-[200px] leading-relaxed flex items-center custom-no-scrollbar"
                                                                 style={{
                                                                     fontSize: '16px',
                                                                     fontFamily: 'inherit',
