@@ -779,23 +779,24 @@ const AIRecommender = ({
               const flatRequirements = flattenRequirements(validation.providedRequirements);
               const mergedData = mergeRequirementsWithSchema(flatRequirements, schema);
 
-              setCollectedData(mergedData);
-              setState((prev) => ({
-                ...prev,
-                requirementSchema: schema,
-                productType: validation.productType,
-                currentProductType: validation.productType,
-                validationResult: validation,
-              }));
-
               if (validation.validationAlert) {
+                // Missing mandatory fields - update state and show validation message
+                setCollectedData(mergedData);
+                setState((prev) => ({
+                  ...prev,
+                  requirementSchema: schema,
+                  productType: validation.productType,
+                  currentProductType: validation.productType,
+                  validationResult: validation,
+                }));
                 // Ask the user for missing info (LLM will later decide on confirmation)
                 await streamAssistantMessage(validation.validationAlert.message);
+                // Undock the sidebar after the response message is streamed
+                setIsDocked(false);
                 setCurrentStep("awaitMissingInfo");
               } else {
-                // All mandatory fields provided - call sales agent API first to ask about additional specs
-                // Advanced parameters will be fetched only when user says "yes" at awaitAdditionalAndLatestSpecs step
-
+                // All mandatory fields provided - fetch agent response FIRST before updating state
+                // This ensures the sidebar undocking and response message appear at the same time
                 agentResponse = await generateAgentResponse(
                   "initialInputWithSpecs",
                   {
@@ -806,7 +807,19 @@ const AIRecommender = ({
                   undefined,
                   searchSessionId
                 );
+
+                // Now update state and stream message together
+                setCollectedData(mergedData);
+                setState((prev) => ({
+                  ...prev,
+                  requirementSchema: schema,
+                  productType: validation.productType,
+                  currentProductType: validation.productType,
+                  validationResult: validation,
+                }));
+                // Stream the response message AND undock sidebar at the same time
                 await streamAssistantMessage(agentResponse.content);
+                setIsDocked(false);
 
                 // Use LLM nextStep if provided, otherwise fall back to awaitAdditionalAndLatestSpecs
                 if (agentResponse.nextStep) setCurrentStep(agentResponse.nextStep as any);

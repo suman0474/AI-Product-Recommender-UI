@@ -2,11 +2,13 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Send, Loader2, Play, Bot, LogOut, User, Upload, Save, FolderOpen, FileText, X } from 'lucide-react';
+import { Send, Loader2, Play, Bot, LogOut, User, Upload, Save, FolderOpen, FileText, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { BASE_URL } from '../components/AIRecommender/api';
 import { identifyInstruments, validateRequirements, searchVendors } from '@/components/AIRecommender/api';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import ReactMarkdown from 'react-markdown';
+import BouncingDots from '@/components/AIRecommender/BouncingDots';
 
 import {
     DropdownMenu,
@@ -53,6 +55,80 @@ interface IdentifiedAccessory {
     sampleInput: string;
 }
 
+// Chat message interface for Project page
+interface ProjectChatMessage {
+    id: string;
+    type: 'user' | 'assistant';
+    content: string;
+    timestamp: Date;
+}
+
+// MessageRow component with animations (same as Dashboard)
+interface MessageRowProps {
+    message: ProjectChatMessage;
+    isHistory: boolean;
+}
+
+const MessageRow = ({ message, isHistory }: MessageRowProps) => {
+    const [isVisible, setIsVisible] = useState(isHistory);
+
+    useEffect(() => {
+        if (!isHistory) {
+            const delay = message.type === 'user' ? 200 : 0;
+            const timer = setTimeout(() => {
+                setIsVisible(true);
+            }, delay);
+            return () => clearTimeout(timer);
+        }
+    }, [isHistory, message.type]);
+
+    const formatTimestamp = (ts: Date) => {
+        try {
+            return ts.toLocaleTimeString();
+        } catch {
+            return '';
+        }
+    };
+
+    return (
+        <div className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[80%] flex items-start space-x-2 ${message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
+                <div className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center ${message.type === 'user' ? 'bg-transparent text-white' : 'bg-transparent'}`}>
+                    {message.type === 'user' ? (
+                        <img src="/icon-user-3d.png" alt="User" className="w-10 h-10 object-contain" />
+                    ) : (
+                        <img src="/icon-engenie.png" alt="Assistant" className="w-14 h-14 object-contain" />
+                    )}
+                </div>
+                <div className="flex-1">
+                    <div
+                        className={`break-words ${message.type === 'user' ? 'glass-bubble-user' : 'glass-bubble-assistant'}`}
+                        style={{
+                            opacity: isVisible ? 1 : 0,
+                            transform: isVisible ? 'scale(1)' : 'scale(0.8)',
+                            transformOrigin: message.type === 'user' ? 'top right' : 'top left',
+                            transition: 'opacity 0.8s ease-out, transform 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+                        }}
+                    >
+                        <div>
+                            <ReactMarkdown>{message.content}</ReactMarkdown>
+                        </div>
+                    </div>
+                    <p
+                        className={`text-xs text-muted-foreground mt-1 px-1 ${message.type === 'user' ? 'text-right' : ''}`}
+                        style={{
+                            opacity: isVisible ? 1 : 0,
+                            transition: 'opacity 0.8s ease 0.3s'
+                        }}
+                    >
+                        {formatTimestamp(message.timestamp)}
+                    </p>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const Project = () => {
     const [requirements, setRequirements] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -75,6 +151,9 @@ const Project = () => {
     const [isProjectListOpen, setIsProjectListOpen] = useState(false);
     const [isProfileEditOpen, setIsProfileEditOpen] = useState(false);
 
+    // Right panel dock state
+    const [isRightDocked, setIsRightDocked] = useState(true);
+
     // Track conversation states for each search tab
     const [tabStates, setTabStates] = useState<Record<string, any>>({});
     const navigate = useNavigate();
@@ -88,8 +167,45 @@ const Project = () => {
     // NEW: For generic product type images
     const [genericImages, setGenericImages] = useState<Record<string, string>>({});
 
-    // NEW: For greeting/question responses
-    const [responseMessage, setResponseMessage] = useState<string>('');
+    // NEW: Chat messages for Project page (replaces responseMessage)
+    const [chatMessages, setChatMessages] = useState<ProjectChatMessage[]>([]);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+    const isHistoryRef = useRef(true);
+    const [showThinking, setShowThinking] = useState(false);
+
+    // Auto-scroll to bottom when new messages arrive
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [chatMessages, showThinking]);
+
+    // Set isHistory to false after initial mount so new messages animate
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            isHistoryRef.current = false;
+        }, 1000);
+        return () => clearTimeout(timer);
+    }, []);
+
+    // Show thinking indicator with delay
+    useEffect(() => {
+        if (isLoading) {
+            const timer = setTimeout(() => setShowThinking(true), 600);
+            return () => clearTimeout(timer);
+        } else {
+            setShowThinking(false);
+        }
+    }, [isLoading]);
+
+    // Helper to add a message to chat
+    const addChatMessage = (type: 'user' | 'assistant', content: string) => {
+        const newMessage: ProjectChatMessage = {
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+            type,
+            content,
+            timestamp: new Date()
+        };
+        setChatMessages(prev => [...prev, newMessage]);
+    };
 
     // NEW: For file upload
     const [attachedFile, setAttachedFile] = useState<File | null>(null);
@@ -128,6 +244,7 @@ const Project = () => {
 
     // Batched parallel loading: Load multiple images at once in batches
     // Collects ALL images first, then displays them all at once
+    // IMPORTANT: Merges with existing images to preserve previously loaded ones
     const fetchGenericImagesLazy = async (productTypes: string[]) => {
         const uniqueTypes = [...new Set(productTypes)]; // Remove duplicates
 
@@ -192,9 +309,12 @@ const Project = () => {
             }
         }
 
-        // ALL batches complete - now update state with ALL images at once
-        console.log(`[PARALLEL_BATCH] All batches complete! Displaying ${Object.keys(allLoadedImages).length} images at once...`);
-        setGenericImages(allLoadedImages);
+        // ALL batches complete - now MERGE with existing images (don't replace!)
+        console.log(`[PARALLEL_BATCH] All batches complete! Merging ${Object.keys(allLoadedImages).length} new images with existing...`);
+        setGenericImages(prevImages => ({
+            ...prevImages,  // Keep all previously loaded images
+            ...allLoadedImages  // Add/update with new images
+        }));
     };
 
     // Escape string for use in RegExp
@@ -260,52 +380,121 @@ const Project = () => {
             return;
         }
 
+        // Combine manual requirements with extracted text from file
+        const finalRequirements = requirements.trim() && extractedText.trim()
+            ? `${requirements}\n\n${extractedText}`
+            : requirements.trim() || extractedText.trim();
+
+        // Create display message for chat (show file name instead of extracted text)
+        const displayMessage = attachedFile
+            ? requirements.trim()
+                ? `${requirements.trim()}\n\n📎 ${attachedFile.name}`
+                : `📎 ${attachedFile.name}`
+            : requirements.trim();
+
+        // Add user message to chat (show file name, not extracted text)
+        addChatMessage('user', displayMessage);
+
+        // Clear the input immediately after adding the message
+        setRequirements('');
+
+        // Clear attached file immediately after capturing the display message
+        setAttachedFile(null);
+        setExtractedText('');
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
+
         setIsLoading(true);
-        // Clear previous response message
-        setResponseMessage('');
 
         try {
-            // Combine manual requirements with extracted text from file
-            const finalRequirements = requirements.trim() && extractedText.trim()
-                ? `${requirements}\n\n${extractedText}`
-                : requirements.trim() || extractedText.trim();
+            // Use LLM-based classification: Always send current instruments/accessories
+            // The backend will use LLM to determine if this is:
+            // - A modification request (if existing data provided and user wants to change it)
+            // - New requirements (if no existing data or user provides fresh requirements)
+            // - A question, greeting, or unrelated content
+            console.log('[API] Sending request with', instruments.length, 'instruments and', accessories.length, 'accessories');
 
-            // Send the final requirements to LLM
-            const response = await identifyInstruments(finalRequirements);
+            const response = await identifyInstruments(
+                finalRequirements,
+                instruments.length > 0 ? instruments : undefined,
+                accessories.length > 0 ? accessories : undefined
+            );
 
             // Check response type
             const responseType = (response as any).responseType || (response as any).response_type;
 
-            // CASE 1: Greeting response - Show message below smaller input box
+            // CASE 1: Greeting response - Show message in chat
             if (responseType === 'greeting') {
-                setResponseMessage((response as any).message || '');
+                addChatMessage('assistant', (response as any).message || '');
                 setShowResults(true); // Make input box smaller, consistent with requirements
-                setInstruments([]);
-                setAccessories([]);
-                // Clear attached file and extracted text after successful submission
-                setAttachedFile(null);
-                setExtractedText('');
+                // Don't clear instruments/accessories on greeting - keep existing data
+                if (instruments.length === 0 && accessories.length === 0) {
+                    setInstruments([]);
+                    setAccessories([]);
+                }
                 return;
             }
 
-            // CASE 2: Question response - Show message below smaller input box
+            // CASE 2: Question response - Show message in chat
             if (responseType === 'question') {
-                setResponseMessage((response as any).message || '');
+                addChatMessage('assistant', (response as any).message || '');
                 setShowResults(true); // Make input box smaller, consistent with requirements
-                setInstruments([]);
-                setAccessories([]);
-                // Clear attached file and extracted text after successful submission
-                setAttachedFile(null);
-                setExtractedText('');
+                // Don't clear instruments/accessories on question - keep existing data
+                if (instruments.length === 0 && accessories.length === 0) {
+                    setInstruments([]);
+                    setAccessories([]);
+                }
                 return;
             }
 
-            // CASE 3: Requirements response (instruments and accessories)
-            if (responseType === 'requirements') {
+            // CASE 3: Modification response - Update the list with changes
+            if (responseType === 'modification') {
+                const modMessage = (response as any).message || 'I\'ve updated your instrument list based on your request.';
+                addChatMessage('assistant', modMessage);
+
+                // Update instruments and accessories with modified list
                 setInstruments(response.instruments || []);
                 setAccessories(response.accessories || []);
                 setShowResults(true);
-                setResponseMessage(''); // Clear any previous message
+
+                // Lazy load generic images for any new items
+                const productNames: string[] = [];
+                (response.instruments || []).forEach((inst: any) => {
+                    if (inst.productName) productNames.push(inst.productName);
+                });
+                (response.accessories || []).forEach((acc: any) => {
+                    if (acc.accessoryName) productNames.push(acc.accessoryName);
+                });
+
+                // Only fetch images for items not already loaded
+                const newProductNames = productNames.filter(name => !genericImages[name]);
+                if (newProductNames.length > 0) {
+                    fetchGenericImagesLazy(newProductNames);
+                }
+
+
+
+                const changeCount = (response as any).changesMade?.length || 0;
+                toast({
+                    title: "List Updated",
+                    description: `Applied ${changeCount} change(s). You now have ${response.instruments?.length || 0} instruments and ${response.accessories?.length || 0} accessories.`,
+                });
+                return;
+            }
+
+            // CASE 4: Requirements response (instruments and accessories)
+            if (responseType === 'requirements') {
+                // Use the message from backend response
+                const summaryMessage = (response as any).message || `I've identified instruments and accessories based on your requirements. You can view the detailed list in the right panel.`;
+                addChatMessage('assistant', summaryMessage);
+
+                setInstruments(response.instruments || []);
+                setAccessories(response.accessories || []);
+                setShowResults(true);
+
+                // Automatically undock the right panel when results arrive
+                setIsRightDocked(false);
 
                 // Set the project name from the API response, fallback to 'Project' if not provided
                 if (response.projectName) {
@@ -327,9 +516,7 @@ const Project = () => {
                     fetchGenericImagesLazy(productNames);
                 }
 
-                // Clear attached file and extracted text after successful submission
-                setAttachedFile(null);
-                setExtractedText('');
+
 
                 toast({
                     title: "Success",
@@ -337,6 +524,7 @@ const Project = () => {
                 });
             }
         } catch (error: any) {
+            addChatMessage('assistant', `I couldn't process your request. ${error.message || 'Please try again.'}`);
             toast({
                 title: "Error",
                 description: error.message || "Failed to process request",
@@ -562,7 +750,7 @@ const Project = () => {
         setInstruments([]);
         setAccessories([]);
         setRequirements('');
-        setResponseMessage(''); // Clear any greeting/question responses
+        setChatMessages([]); // Clear chat messages
         setSearchTabs([]);
         setPreviousTab('project');
         setActiveTab('project');
@@ -719,6 +907,7 @@ const Project = () => {
                 conversation_histories: conversationHistories,
                 collected_data: collectedDataAll,
                 generic_images: genericImages,
+                project_chat_messages: chatMessages, // Save Project page chat messages
                 current_step: activeTab === 'project' ? (showResults ? 'showSummary' : 'initialInput') : 'search',
                 active_tab: activeTab === 'project' ? 'Project' : (searchTabs.find(t => t.id === activeTab)?.title || activeTab), // Save tab name instead of ID
                 analysis_results: analysisResults,
@@ -1024,6 +1213,27 @@ const Project = () => {
                 setGenericImages({});
             }
 
+            // Restore Project page chat messages
+            const savedChatMessages = project.projectChatMessages || project.project_chat_messages || [];
+            if (savedChatMessages.length > 0) {
+                console.log('Restoring Project page chat messages:', savedChatMessages.length);
+                // Convert timestamp strings back to Date objects
+                const restoredMessages = savedChatMessages.map((msg: any) => ({
+                    ...msg,
+                    timestamp: new Date(msg.timestamp)
+                }));
+                setChatMessages(restoredMessages);
+                // Mark as history so messages don't animate on load
+                isHistoryRef.current = true;
+
+                // Allow new messages to animate after load
+                setTimeout(() => {
+                    isHistoryRef.current = false;
+                }, 1000);
+            } else {
+                setChatMessages([]);
+            }
+
             // Show results if we have instruments/accessories
             const instruments = project.identifiedInstruments || project.identified_instruments || [];
             const accessories = project.identifiedAccessories || project.identified_accessories || [];
@@ -1243,15 +1453,21 @@ const Project = () => {
 
     // ✅ Restore scroll position when returning to Project tab
     useEffect(() => {
-        if (activeTab === 'project' && projectScrollRef.current) {
-            // Use setTimeout to ensure the DOM is fully rendered
-            setTimeout(() => {
+        if (activeTab === 'project' && projectScrollRef.current && savedScrollPosition > 0) {
+            // Use requestAnimationFrame for more reliable DOM timing
+            requestAnimationFrame(() => {
                 if (projectScrollRef.current) {
                     projectScrollRef.current.scrollTop = savedScrollPosition;
                 }
-            }, 0);
+                // Double-check with a small delay as fallback
+                setTimeout(() => {
+                    if (projectScrollRef.current && projectScrollRef.current.scrollTop !== savedScrollPosition) {
+                        projectScrollRef.current.scrollTop = savedScrollPosition;
+                    }
+                }, 50);
+            });
         }
-    }, [activeTab]);
+    }, [activeTab, savedScrollPosition]);
 
     // Additional effect to handle scroll position restoration after content changes
     useEffect(() => {
@@ -1260,7 +1476,7 @@ const Project = () => {
                 if (projectScrollRef.current) {
                     projectScrollRef.current.scrollTop = savedScrollPosition;
                 }
-            }, 100); // Slightly longer delay to ensure content is loaded
+            }, 150); // Longer delay to ensure content including images is loaded
 
             return () => clearTimeout(timer);
         }
@@ -1320,6 +1536,12 @@ const Project = () => {
                                 disablePictureInPicture
                                 controls={false}
                                 onContextMenu={(e) => e.preventDefault()}
+                                onError={(e) => {
+                                    // Retry loading on error (handles 304 cache issues)
+                                    const video = e.currentTarget;
+                                    video.load();
+                                    video.play().catch(() => { });
+                                }}
                                 className="w-full h-full object-cover pointer-events-none"
                             />
                         </div>
@@ -1587,161 +1809,348 @@ const Project = () => {
             </AlertDialog>
 
             {/* Main Content */}
-            <div className="flex-1">
-                <div className="w-full h-full">
-                    {activeTab === 'project' && (
-                        <div
-                            ref={projectScrollRef}
-                            className="h-screen overflow-y-auto custom-no-scrollbar pt-28"
-                        >
-                            <div className="mx-auto max-w-[900px] px-4 md:px-6 min-h-full flex items-center justify-center">
-                                <div className={`w-full p-4 md:p-6 glass-card animate-in fade-in duration-500 ${showResults ? 'mt-0' : 'my-6'}`}>
-                                    {/* Header */}
-                                    <div className="text-center mb-6">
-                                        <div className="flex items-center justify-center gap-4 mb-4">
-                                            <div className="w-16 h-16 rounded-full overflow-hidden shadow">
-                                                <video
-                                                    src="/animation.mp4"
-                                                    autoPlay
-                                                    muted
-                                                    playsInline
-                                                    disablePictureInPicture
-                                                    controls={false}
-                                                    onContextMenu={(e) => e.preventDefault()}
-                                                    className="w-full h-full object-cover pointer-events-none"
-                                                />
-                                            </div>
-                                            <h1 className="text-4xl font-bold text-foreground">
-                                                EnGenie
-                                            </h1>
-                                        </div>
-                                    </div>
+            <div className="flex-1 relative">
+                {/* Right corner dock button - only show on project tab when results are available */}
+                {activeTab === 'project' && showResults && (
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="fixed top-36 right-0 z-50 btn-glass-secondary border-0 shadow-lg rounded-r-none"
+                        onClick={() => setIsRightDocked(!isRightDocked)}
+                        aria-label={isRightDocked ? "Expand right panel" : "Collapse right panel"}
+                    >
+                        {isRightDocked ? <ChevronLeft /> : <ChevronRight />}
+                    </Button>
+                )}
 
-                                    {!showResults && (
-                                        <div className="text-center space-y-4 mb-8">
-                                            <h2 className="text-3xl font-normal text-muted-foreground">
-                                                Welcome, <span className="text-primary font-bold text-4xl">{user?.firstName || user?.username || 'User'}</span>! what are your requirements
-                                            </h2>
-                                        </div>
-                                    )}
+                <div className="w-full h-full flex">
+                    {/* Main Content Area - Always mounted, use CSS to show/hide */}
+                    <div className={`${activeTab === 'project' ? 'contents' : 'hidden'}`}>
+                        <>
+                            {/* Centered Input Section */}
+                            <div className={`transition-all duration-500 ease-in-out ${!isRightDocked && showResults ? 'w-1/2' : 'w-full'} h-screen overflow-y-auto custom-no-scrollbar pt-24`} ref={projectScrollRef}>
+                                {/* Initial Welcome Screen - with glass-card wrapper */}
+                                {chatMessages.length === 0 ? (
+                                    <div className="mx-auto max-w-[900px] px-4 md:px-6 min-h-full flex items-center justify-center">
+                                        <div className="w-full p-4 md:p-6 glass-card animate-in fade-in duration-500 my-6">
 
-                                    {/* Input Form (always visible) */}
-                                    <form onSubmit={handleSubmit} className="space-y-4">
-                                        <div className="relative group">
-                                            <div className={`relative w-full rounded-[26px] transition-all duration-300 focus-within:ring-2 focus-within:ring-primary/50 focus-within:border-transparent hover:scale-[1.02] flex flex-col`}
-                                                style={{
-                                                    boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)',
-                                                    WebkitBackdropFilter: 'blur(12px)',
-                                                    backdropFilter: 'blur(12px)',
-                                                    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-                                                    border: '1px solid rgba(255, 255, 255, 0.4)',
-                                                    color: 'rgba(0, 0, 0, 0.8)'
-                                                }}>
-                                                <Textarea
-                                                    value={requirements}
-                                                    onChange={(e) => setRequirements(e.target.value)}
-                                                    onKeyDown={handleKeyPress}
-                                                    className={`w-full bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground/70 resize-none text-base p-4 md:p-6 text-lg leading-relaxed shadow-none custom-no-scrollbar ${showResults ? 'min-h-[80px]' : 'min-h-[120px]'}`}
-                                                    style={{
-                                                        backgroundColor: 'transparent',
-                                                        boxShadow: 'none',
-                                                        color: 'inherit'
-                                                    }}
-                                                    placeholder="Describe the product you are looking for..."
-                                                    disabled={isLoading}
-                                                />
-
-                                                {/* File Display & Buttons Bar - Footer inside the glass box */}
-                                                <div className="flex items-center justify-between px-4 pb-4 md:px-6 md:pb-6 pt-2">
-                                                    <div className="flex items-center gap-2">
-                                                        {/* Attached File Badge */}
-                                                        {attachedFile && (
-                                                            <div className="flex items-center gap-2 p-1.5 px-3 glass-card bg-primary/10 border-0 rounded-full text-xs">
-                                                                {isExtracting ? (
-                                                                    <Loader2 className="h-3 w-3 text-primary animate-spin" />
-                                                                ) : (
-                                                                    <FileText className="h-3 w-3 text-primary" />
-                                                                )}
-                                                                <span className="text-primary truncate max-w-[100px]">{attachedFile.name}</span>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={handleRemoveFile}
-                                                                    className="text-primary/70 hover:text-primary"
-                                                                    title="Remove file"
-                                                                >
-                                                                    <X className="h-3 w-3" />
-                                                                </button>
+                                            {/* Header - Only show when no chat messages */}
+                                            {chatMessages.length === 0 && (
+                                                <>
+                                                    <div className="text-center mb-6">
+                                                        <div className="flex items-center justify-center gap-4 mb-4">
+                                                            <div className="w-16 h-16 rounded-full overflow-hidden shadow">
+                                                                <video
+                                                                    src="/animation.mp4"
+                                                                    autoPlay
+                                                                    muted
+                                                                    playsInline
+                                                                    disablePictureInPicture
+                                                                    controls={false}
+                                                                    onContextMenu={(e) => e.preventDefault()}
+                                                                    onError={(e) => {
+                                                                        // Retry loading on error (handles 304 cache issues)
+                                                                        const video = e.currentTarget;
+                                                                        video.load();
+                                                                        video.play().catch(() => { });
+                                                                    }}
+                                                                    className="w-full h-full object-cover pointer-events-none"
+                                                                />
                                                             </div>
-                                                        )}
-
-                                                        {/* Hidden file input */}
-                                                        <input
-                                                            ref={fileInputRef}
-                                                            type="file"
-                                                            accept=".pdf,.docx,.doc,.txt,.jpg,.jpeg,.png,.bmp,.tiff"
-                                                            onChange={handleFileSelect}
-                                                            className="hidden"
-                                                        />
+                                                            <h1 className="text-4xl font-bold text-foreground">
+                                                                EnGenie
+                                                            </h1>
+                                                        </div>
                                                     </div>
 
-                                                    {/* Action Buttons */}
-                                                    <div className="flex items-center gap-1">
-                                                        {/* Attach Button */}
-                                                        <Button
-                                                            type="button"
-                                                            onClick={() => fileInputRef.current?.click()}
-                                                            disabled={isLoading || isExtracting}
-                                                            className="w-8 h-8 rounded-full hover:bg-transparent transition-all duration-300 flex-shrink-0 text-muted-foreground hover:text-primary hover:scale-110"
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            title="Attach file"
-                                                        >
-                                                            <Upload className="h-4 w-4" />
-                                                        </Button>
+                                                    {!showResults && (
+                                                        <div className="text-center space-y-4 mb-8">
+                                                            <h2 className="text-3xl font-normal text-muted-foreground">
+                                                                Welcome, <span className="text-primary font-bold text-4xl">{user?.firstName || user?.username || 'User'}</span>! what are your requirements
+                                                            </h2>
+                                                        </div>
+                                                    )}
+                                                </>
+                                            )}
 
-                                                        {/* Submit Button */}
-                                                        <Button
-                                                            type="submit"
-                                                            disabled={isLoading || isExtracting || (!requirements.trim() && !extractedText.trim())}
-                                                            className={`w-8 h-8 p-0 rounded-full transition-all duration-300 flex-shrink-0 hover:bg-transparent ${(!requirements.trim() && !extractedText.trim()) ? 'text-muted-foreground' : 'text-primary hover:scale-110'}`}
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            title="Submit"
-                                                        >
-                                                            {isLoading || isExtracting ? (
-                                                                <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                                                            ) : (
-                                                                <Send className="h-4 w-4" />
-                                                            )}
-                                                        </Button>
+
+                                            {/* Bouncing Dots when loading */}
+                                            {showThinking && (
+                                                <div className="mb-4">
+                                                    <div className="flex justify-start">
+                                                        <div className="max-w-[80%] flex items-start space-x-2">
+                                                            <div className="flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center bg-transparent">
+                                                                <img
+                                                                    src="/icon-engenie.png"
+                                                                    alt="Assistant"
+                                                                    className="w-14 h-14 object-contain"
+                                                                />
+                                                            </div>
+                                                            <div className="p-3 rounded-lg">
+                                                                <BouncingDots />
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 </div>
+                                            )}
+
+                                            {/* Input Form */}
+                                            <form onSubmit={handleSubmit}>
+                                                <div className="relative group">
+                                                    <div className={`relative w-full rounded-[26px] transition-all duration-300 focus-within:ring-2 focus-within:ring-primary/50 focus-within:border-transparent hover:scale-[1.02] flex flex-col`}
+                                                        style={{
+                                                            boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)',
+                                                            WebkitBackdropFilter: 'blur(12px)',
+                                                            backdropFilter: 'blur(12px)',
+                                                            backgroundColor: 'rgba(255, 255, 255, 0.3)',
+                                                            border: '1px solid rgba(255, 255, 255, 0.4)',
+                                                            color: 'rgba(0, 0, 0, 0.8)'
+                                                        }}>
+                                                        <Textarea
+                                                            value={requirements}
+                                                            onChange={(e) => setRequirements(e.target.value)}
+                                                            onKeyDown={handleKeyPress}
+                                                            className={`w-full bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground/70 resize-none text-base p-4 md:p-6 text-lg leading-relaxed shadow-none custom-no-scrollbar ${showResults ? 'min-h-[80px]' : 'min-h-[120px]'}`}
+                                                            style={{
+                                                                backgroundColor: 'transparent',
+                                                                boxShadow: 'none',
+                                                                color: 'inherit'
+                                                            }}
+                                                            placeholder="Describe the product you are looking for..."
+                                                            disabled={isLoading}
+                                                        />
+
+                                                        {/* File Display & Buttons Bar - Footer inside the glass box */}
+                                                        <div className="flex items-center justify-between px-4 pb-4 md:px-6 md:pb-6 pt-2">
+                                                            <div className="flex items-center gap-2">
+                                                                {/* Attached File Badge - visible before submit */}
+                                                                {attachedFile && (
+                                                                    <div className="flex items-center gap-2 p-1.5 px-3 glass-card bg-primary/10 border-0 rounded-full text-xs">
+                                                                        {isExtracting ? (
+                                                                            <Loader2 className="h-3 w-3 text-primary animate-spin" />
+                                                                        ) : (
+                                                                            <FileText className="h-3 w-3 text-primary" />
+                                                                        )}
+                                                                        <span className="text-primary truncate max-w-[100px]">{attachedFile.name}</span>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={handleRemoveFile}
+                                                                            className="text-primary/70 hover:text-primary"
+                                                                            title="Remove file"
+                                                                        >
+                                                                            <X className="h-3 w-3" />
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Hidden file input */}
+                                                                <input
+                                                                    ref={fileInputRef}
+                                                                    type="file"
+                                                                    accept=".pdf,.docx,.doc,.txt,.jpg,.jpeg,.png,.bmp,.tiff"
+                                                                    onChange={handleFileSelect}
+                                                                    className="hidden"
+                                                                />
+                                                            </div>
+
+                                                            {/* Action Buttons */}
+                                                            <div className="flex items-center gap-1">
+                                                                {/* Attach Button */}
+                                                                <Button
+                                                                    type="button"
+                                                                    onClick={() => fileInputRef.current?.click()}
+                                                                    disabled={isLoading || isExtracting}
+                                                                    className="w-8 h-8 rounded-full hover:bg-transparent transition-all duration-300 flex-shrink-0 text-muted-foreground hover:text-primary hover:scale-110"
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    title="Attach file"
+                                                                >
+                                                                    <Upload className="h-4 w-4" />
+                                                                </Button>
+
+                                                                {/* Submit Button */}
+                                                                <Button
+                                                                    type="submit"
+                                                                    disabled={isLoading || isExtracting || (!requirements.trim() && !extractedText.trim())}
+                                                                    className={`w-8 h-8 p-0 rounded-full transition-all duration-300 flex-shrink-0 hover:bg-transparent ${(!requirements.trim() && !extractedText.trim()) ? 'text-muted-foreground' : 'text-primary hover:scale-110'}`}
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    title="Submit"
+                                                                >
+                                                                    {isLoading || isExtracting ? (
+                                                                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                                                    ) : (
+                                                                        <Send className="h-4 w-4" />
+                                                                    )}
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    /* Full Screen Chat Mode - Matching ChatInterface layout exactly */
+                                    <div className="flex-1 flex flex-col h-full bg-transparent relative">
+                                        {/* Header with Logo and EnGenie name - Same as ChatInterface */}
+                                        <div className="flex-none py-0 border-b border-white/10 bg-transparent z-20 flex justify-center items-center">
+                                            <div className="flex items-center gap-1">
+                                                <div className="flex items-center justify-center">
+                                                    <img
+                                                        src="/icon-engenie.png"
+                                                        alt="EnGenie"
+                                                        className="w-16 h-16 object-contain"
+                                                    />
+                                                </div>
+                                                <h1 className="text-3xl font-bold text-[#0f172a]">
+                                                    EnGenie
+                                                </h1>
                                             </div>
                                         </div>
-                                    </form>
 
-                                    {/* Results container */}
-                                    <div className="mt-6">
-                                        {/* Response Message Display (for greetings and questions) */}
-                                        {responseMessage && (
-                                            <div className="mt-6 p-6 glass-card bg-gradient-to-br from-[#F5FAFC]/40 to-[#EAF6FB]/40 border-0 rounded-xl shadow-lg animate-in slide-in-from-bottom-2 duration-500">
-                                                <div className="flex items-start gap-3">
-                                                    {/* <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center">
-                          <Bot className="h-6 w-6 text-white" />
-                        </div> */}
-                                                    <div className="flex-1">
-                                                        {/* <h3 className="text-lg font-semibold text-gray-900 mb-2">Engenie</h3> */}
-                                                        <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{responseMessage}</p>
+                                        {/* Chat Messages Area - Same padding as ChatInterface */}
+                                        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-no-scrollbar pb-32">
+                                            {chatMessages.map((message) => (
+                                                <MessageRow
+                                                    key={message.id}
+                                                    message={message}
+                                                    isHistory={isHistoryRef.current}
+                                                />
+                                            ))}
+
+                                            {/* Bouncing Dots Loading Indicator */}
+                                            {showThinking && (
+                                                <div className="flex justify-start">
+                                                    <div className="max-w-[80%] flex items-start space-x-2">
+                                                        <div className="flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center bg-transparent">
+                                                            <img
+                                                                src="/icon-engenie.png"
+                                                                alt="Assistant"
+                                                                className="w-14 h-14 object-contain"
+                                                            />
+                                                        </div>
+                                                        <div className="p-3 rounded-lg">
+                                                            <BouncingDots />
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        )}
-                                    </div>
+                                            )}
 
-                                    {/* Results Display (shown below input when available) */}
-                                    {showResults && (
-                                        <div className="space-y-6 mt-6">
-                                            {/* Instruments Section - Only show if there are instruments */}
+                                            <div ref={messagesEndRef} />
+                                        </div>
+
+                                        {/* Input Form - Fixed at bottom like ChatInterface */}
+                                        <div className="absolute bottom-0 left-0 right-0 p-4 bg-transparent">
+                                            <div className="max-w-4xl mx-auto px-2 md:px-8">
+                                                <form onSubmit={handleSubmit}>
+                                                    <div className="relative group">
+                                                        <div className={`relative w-full rounded-[26px] transition-all duration-300 focus-within:ring-2 focus-within:ring-primary/50 focus-within:border-transparent hover:scale-[1.02]`}
+                                                            style={{
+                                                                boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)',
+                                                                WebkitBackdropFilter: 'blur(12px)',
+                                                                backdropFilter: 'blur(12px)',
+                                                                backgroundColor: '#ffffff',
+                                                                border: '1px solid rgba(255, 255, 255, 0.4)',
+                                                                color: 'rgba(0, 0, 0, 0.8)'
+                                                            }}>
+                                                            <textarea
+                                                                value={requirements}
+                                                                onChange={(e) => setRequirements(e.target.value)}
+                                                                onKeyDown={handleKeyPress}
+                                                                className="w-full bg-transparent border-0 focus:ring-0 focus:outline-none px-4 py-2.5 pr-12 text-sm resize-none min-h-[40px] max-h-[200px] leading-relaxed flex items-center custom-no-scrollbar"
+                                                                style={{
+                                                                    fontSize: '16px',
+                                                                    fontFamily: 'inherit',
+                                                                    boxShadow: 'none',
+                                                                    overflowY: 'auto'
+                                                                }}
+                                                                placeholder="Type your message here..."
+                                                                disabled={isLoading}
+                                                            />
+
+                                                            {/* Attached File Badge - visible before submit */}
+                                                            {attachedFile && (
+                                                                <div className="absolute bottom-1.5 left-3 flex items-center gap-2 p-1 px-2 bg-primary/10 rounded-full text-xs">
+                                                                    {isExtracting ? (
+                                                                        <Loader2 className="h-3 w-3 text-primary animate-spin" />
+                                                                    ) : (
+                                                                        <FileText className="h-3 w-3 text-primary" />
+                                                                    )}
+                                                                    <span className="text-primary truncate max-w-[80px]">{attachedFile.name}</span>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={handleRemoveFile}
+                                                                        className="text-primary/70 hover:text-primary"
+                                                                        title="Remove file"
+                                                                    >
+                                                                        <X className="h-3 w-3" />
+                                                                    </button>
+                                                                </div>
+                                                            )}
+
+                                                            {/* Action Buttons - positioned like ChatInterface */}
+                                                            <div className="absolute bottom-1.5 right-1.5 flex items-center gap-0.5">
+                                                                {/* Attach Button */}
+                                                                <Button
+                                                                    type="button"
+                                                                    onClick={() => fileInputRef.current?.click()}
+                                                                    disabled={isLoading || isExtracting}
+                                                                    className="w-8 h-8 rounded-full hover:bg-transparent transition-all duration-300 flex-shrink-0 text-muted-foreground hover:text-primary hover:scale-110"
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    title="Attach file"
+                                                                >
+                                                                    <Upload className="h-4 w-4" />
+                                                                </Button>
+
+                                                                {/* Submit Button */}
+                                                                <Button
+                                                                    type="submit"
+                                                                    disabled={isLoading || isExtracting || (!requirements.trim() && !extractedText.trim())}
+                                                                    className={`w-8 h-8 p-0 rounded-full transition-all duration-300 flex-shrink-0 hover:bg-transparent ${(!requirements.trim() && !extractedText.trim()) ? 'text-muted-foreground' : 'text-primary hover:scale-110'}`}
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    title="Submit"
+                                                                >
+                                                                    {isLoading || isExtracting ? (
+                                                                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                                                    ) : (
+                                                                        <Send className="h-4 w-4" />
+                                                                    )}
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+
+                                                    </div>
+
+                                                    {/* Hidden file input */}
+                                                    <input
+                                                        ref={fileInputRef}
+                                                        type="file"
+                                                        accept=".pdf,.docx,.doc,.txt,.jpg,.jpeg,.png,.bmp,.tiff"
+                                                        onChange={handleFileSelect}
+                                                        className="hidden"
+                                                    />
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Right Panel - Results */}
+                            {showResults && (
+                                <div className={`
+                                    h-screen border-l border-slate-300 dark:border-slate-600 bg-gradient-to-br from-[#F5FAFC]/40 to-[#EAF6FB]/40 
+                                    overflow-y-auto custom-no-scrollbar pt-36
+                                    transition-all duration-500 ease-in-out origin-right
+                                    ${!isRightDocked ? 'w-1/2 opacity-100' : 'w-0 opacity-0 border-l-0 overflow-hidden'}
+                                `}>
+                                    <div className="w-full min-w-[45vw] p-6">
+                                        {/* Results Display */}
+                                        <div className="space-y-6">
+                                            {/* Instruments Section */}
                                             {instruments.length > 0 && (
                                                 <>
                                                     <div className="mb-6">
@@ -1775,7 +2184,7 @@ const Project = () => {
                                                                     </Button>
                                                                 </div>
 
-                                                                {/* Generic Product Type Image - Only show if loaded */}
+                                                                {/* Generic Product Type Image */}
                                                                 {genericImages[instrument.productName] && (
                                                                     <div className="flex justify-center my-4 rounded-lg overflow-hidden">
                                                                         <img
@@ -1783,7 +2192,6 @@ const Project = () => {
                                                                             alt={`Generic ${instrument.category}`}
                                                                             className="w-48 h-48 object-contain rounded-lg mix-blend-multiply"
                                                                             onError={(e) => {
-                                                                                // Hide image if it fails to load
                                                                                 e.currentTarget.style.display = 'none';
                                                                             }}
                                                                         />
@@ -1820,15 +2228,14 @@ const Project = () => {
                                                 </>
                                             )}
 
-
-                                            {/* Accessories Section - Only show if there are accessories */}
+                                            {/* Accessories Section */}
                                             {accessories.length > 0 && (
                                                 <>
-                                                    <h2 className="text-2xl font-bold">
+                                                    <h2 className="text-2xl font-bold mt-8">
                                                         Accessories ({accessories.length})
                                                     </h2>
 
-                                                    <div className="space-y-4 mt-8">
+                                                    <div className="space-y-4 mt-4">
                                                         {accessories.map((accessory, index) => (
                                                             <div
                                                                 key={index}
@@ -1853,7 +2260,7 @@ const Project = () => {
                                                                     </Button>
                                                                 </div>
 
-                                                                {/* Generic Product Type Image - Only show if loaded */}
+                                                                {/* Generic Product Type Image */}
                                                                 {genericImages[accessory.accessoryName] && (
                                                                     <div className="flex justify-center my-4 rounded-lg overflow-hidden">
                                                                         <img
@@ -1861,7 +2268,6 @@ const Project = () => {
                                                                             alt={`Generic ${accessory.category}`}
                                                                             className="w-48 h-48 object-contain rounded-lg mix-blend-multiply"
                                                                             onError={(e) => {
-                                                                                // Hide image if it fails to load
                                                                                 e.currentTarget.style.display = 'none';
                                                                             }}
                                                                         />
@@ -1898,42 +2304,43 @@ const Project = () => {
                                                 </>
                                             )}
                                         </div>
-                                    )}
+                                    </div>
                                 </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {searchTabs.map((tab) => {
-                        const savedState = tabStates[tab.id];
-                        console.log(`Rendering AIRecommender for tab ${tab.id} with saved state:`, savedState);
-                        return (
-                            <div
-                                key={tab.id}
-                                className={`h-screen pt-24 ${activeTab === tab.id ? 'block' : 'hidden'}`}
-                            >
-                                <AIRecommender
-                                    key={tab.id}
-                                    initialInput={tab.input}
-                                    fillParent
-                                    onStateChange={(state) => handleTabStateChange(tab.id, state)}
-                                    savedMessages={savedState?.messages}
-                                    savedCollectedData={savedState?.collectedData}
-                                    savedCurrentStep={savedState?.currentStep}
-                                    savedAnalysisResult={savedState?.analysisResult}
-                                    savedRequirementSchema={savedState?.requirementSchema}
-                                    savedValidationResult={savedState?.validationResult}
-                                    savedCurrentProductType={savedState?.currentProductType}
-                                    savedInputValue={savedState?.inputValue}
-                                    savedAdvancedParameters={savedState?.advancedParameters}
-                                    savedSelectedAdvancedParams={savedState?.selectedAdvancedParams}
-                                    savedFieldDescriptions={savedState?.fieldDescriptions}
-                                    savedPricingData={savedState?.pricingData}
-                                />
-                            </div>
-                        );
-                    })}
+                            )}
+                        </>
+                    </div>
                 </div>
+
+                {/* Search Tabs - positioned absolutely relative to the flex-1 relative container */}
+                {searchTabs.map((tab) => {
+                    const savedState = tabStates[tab.id];
+                    console.log(`Rendering AIRecommender for tab ${tab.id} with saved state:`, savedState);
+                    return (
+                        <div
+                            key={tab.id}
+                            className={`absolute inset-0 top-24 ${activeTab === tab.id ? 'block' : 'hidden'}`}
+                        >
+                            <AIRecommender
+                                key={tab.id}
+                                initialInput={tab.input}
+                                fillParent
+                                onStateChange={(state) => handleTabStateChange(tab.id, state)}
+                                savedMessages={savedState?.messages}
+                                savedCollectedData={savedState?.collectedData}
+                                savedCurrentStep={savedState?.currentStep}
+                                savedAnalysisResult={savedState?.analysisResult}
+                                savedRequirementSchema={savedState?.requirementSchema}
+                                savedValidationResult={savedState?.validationResult}
+                                savedCurrentProductType={savedState?.currentProductType}
+                                savedInputValue={savedState?.inputValue}
+                                savedAdvancedParameters={savedState?.advancedParameters}
+                                savedSelectedAdvancedParams={savedState?.selectedAdvancedParams}
+                                savedFieldDescriptions={savedState?.fieldDescriptions}
+                                savedPricingData={savedState?.pricingData}
+                            />
+                        </div>
+                    );
+                })}
             </div>
         </div>
     );

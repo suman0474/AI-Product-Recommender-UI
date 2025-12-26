@@ -176,17 +176,11 @@ const LeftSidebar = ({
   onFieldDescriptionsChange,
 }: LeftSidebarProps) => {
   const [fieldDescriptions, setFieldDescriptions] = useState<Record<string, string>>(savedFieldDescriptions || {});
-  const hasAutoUndocked = useRef(false);
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  // Auto-undock when requirement data becomes available (only once)
-  useEffect(() => {
-    if (requirementSchema && Object.keys(collectedData).length > 0 && isDocked && !hasAutoUndocked.current) {
-      setIsDocked(false);
-      hasAutoUndocked.current = true;
-    }
-  }, [requirementSchema, collectedData, isDocked, setIsDocked]);
+  // Note: Auto-undock is now controlled by parent component (index.tsx)
+  // This ensures the sidebar undocks at the same time as the API response message appears
 
   const profileButtonLabel = capitalizeFirstLetter(user?.name || user?.username || "User");
   const profileFullName = user?.name || `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || user?.username || "User";

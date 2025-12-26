@@ -660,21 +660,95 @@ export const postConversationTurn = async (
 };
 
 /**
- * Identifies instruments from user requirements using LLM
+ * Identifies instruments from user requirements using LLM.
+ * When currentInstruments and currentAccessories are provided, the backend will use
+ * LLM-based classification to detect if the user wants to modify the existing list.
+ * 
  * @param requirements User's requirements text
- * @returns A promise that resolves with identified instruments
+ * @param currentInstruments Optional - existing instruments list for modification detection
+ * @param currentAccessories Optional - existing accessories list for modification detection
+ * @returns A promise that resolves with identified instruments (or modification result)
  */
 export const identifyInstruments = async (
-  requirements: string
+  requirements: string,
+  currentInstruments?: any[],
+  currentAccessories?: any[]
 ): Promise<InstrumentIdentificationResult> => {
   try {
-    const response = await axios.post(`/api/identify-instruments`, {
+    const payload: any = {
       requirements,
-    });
+    };
+
+    // If existing data is provided, include it for LLM-based modification detection
+    if (currentInstruments && currentInstruments.length > 0) {
+      payload.current_instruments = currentInstruments;
+    }
+    if (currentAccessories && currentAccessories.length > 0) {
+      payload.current_accessories = currentAccessories;
+    }
+
+    const response = await axios.post(`/api/identify-instruments`, payload);
     return convertKeysToCamelCase(response.data) as InstrumentIdentificationResult;
   } catch (error: any) {
     console.error("Instrument identification error:", error.response?.data || error.message);
     throw new Error(error.response?.data?.error || "Failed to identify instruments");
+  }
+};
+
+/**
+ * Modification result interface
+ */
+export interface InstrumentModificationResult {
+  responseType: string;
+  message: string;
+  instruments: any[];
+  accessories: any[];
+  changesMade?: string[];
+  summary?: string;
+}
+
+/**
+ * Modifies/refines the identified instruments and accessories list based on user's natural language request.
+ * Supports adding, removing, and updating items in the list.
+ * 
+ * @param modificationRequest User's modification request in natural language (e.g., "Add a control valve", "Remove the flow meter")
+ * @param currentInstruments Current list of identified instruments
+ * @param currentAccessories Current list of identified accessories
+ * @param searchSessionId Optional session ID for tracking
+ * @returns A promise that resolves with the modified instruments and accessories
+ * 
+ * @example
+ * // Add new items
+ * modifyInstruments("Add 2 control valves with 3-inch size", instruments, accessories);
+ * 
+ * // Remove items
+ * modifyInstruments("Remove the temperature transmitter", instruments, accessories);
+ * 
+ * // Update specifications
+ * modifyInstruments("Change the pressure range to 0-200 psi for all transmitters", instruments, accessories);
+ */
+export const modifyInstruments = async (
+  modificationRequest: string,
+  currentInstruments: any[],
+  currentAccessories: any[],
+  searchSessionId?: string
+): Promise<InstrumentModificationResult> => {
+  try {
+    const payload: any = {
+      modification_request: modificationRequest,
+      current_instruments: currentInstruments,
+      current_accessories: currentAccessories,
+    };
+
+    if (searchSessionId) {
+      payload.search_session_id = searchSessionId;
+    }
+
+    const response = await axios.post(`/api/modify-instruments`, payload);
+    return convertKeysToCamelCase(response.data) as InstrumentModificationResult;
+  } catch (error: any) {
+    console.error("Instrument modification error:", error.response?.data || error.message);
+    throw new Error(error.response?.data?.error || "Failed to modify instruments");
   }
 };
 
