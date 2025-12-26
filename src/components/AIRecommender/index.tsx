@@ -1158,12 +1158,13 @@ const AIRecommender = ({
 
       <div className="flex flex-1 overflow-hidden">
         <div
-          className="h-full flex flex-col relative transition-all duration-150 ease-in-out"
+          className="h-full flex flex-col relative transition-all duration-500 ease-in-out"
           style={{
             width: `${widths.left}%`,
             minWidth: widths.left === 0 ? "0%" : "7%",
-            willChange: "width",
-            overflow: "hidden"
+            willChange: "width, opacity",
+            overflow: "hidden",
+            opacity: isDocked ? 0 : 1
           }}
         >
           <LeftSidebar
@@ -1182,7 +1183,7 @@ const AIRecommender = ({
 
         {widths.left > 0 && (
           <div
-            className={`w-1.5 cursor-col-resize transition-colors duration-150 ease-in-out ${draggingHandle === "left"
+            className={`w-1.5 cursor-col-resize transition-colors duration-500 ease-in-out ${draggingHandle === "left"
               ? "bg-[#5FB3E6]"
               : "bg-border hover:bg-[#5FB3E6]"
               }`}
@@ -1192,7 +1193,7 @@ const AIRecommender = ({
         )}
 
         <div
-          className="h-full transition-all duration-150 ease-in-out overflow-auto flex flex-col glass-sidebar"
+          className="h-full transition-all duration-500 ease-in-out overflow-auto flex flex-col glass-sidebar"
           style={{ width: `${100 - (widths.left > 0 ? widths.left : 0) - (widths.right > 0 ? widths.right : 0)}%`, minWidth: "5%", willChange: "width" }}
         >
           <ChatInterface
@@ -1214,7 +1215,7 @@ const AIRecommender = ({
 
         {widths.right > 0 && (
           <div
-            className={`w-1.5 cursor-col-resize transition-colors duration-150 ease-in-out ${draggingHandle === "right"
+            className={`w-1.5 cursor-col-resize transition-colors duration-500 ease-in-out ${draggingHandle === "right"
               ? "bg-[#5FB3E6]"
               : "bg-border hover:bg-[#5FB3E6]"
               }`}
@@ -1224,12 +1225,13 @@ const AIRecommender = ({
         )}
 
         <div
-          className="h-full transition-all duration-150 ease-in-out"
+          className="h-full transition-all duration-500 ease-in-out"
           style={{
             width: `${widths.right}%`,
             minWidth: widths.right === 0 ? "0%" : "7%",
-            willChange: "width",
-            overflow: "hidden"
+            willChange: "width, opacity",
+            overflow: "hidden",
+            opacity: isRightDocked ? 0 : 1
           }}
         >
           <RightPanel
