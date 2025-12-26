@@ -14,7 +14,7 @@ import {
   AnalysisImageResult,
 } from "./types";
 
-export const BASE_URL = "http://localhost:5000";
+export const BASE_URL = "https://zestful-solace-production-ea2e.up.railway.app";
 axios.defaults.baseURL = BASE_URL;
 axios.defaults.withCredentials = true;
 
