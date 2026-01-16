@@ -19,16 +19,22 @@ import RightPanel from "./RightPanel";
 import {
   validateRequirements,
   analyzeProducts,
+  runFinalProductAnalysis,
   getRequirementSchema,
   structureRequirements,
   additionalRequirements,
-  generateAgentResponse,
   classifyIntent,
   discoverAdvancedParameters,
   addAdvancedParameters,
   initializeNewSearch,
   clearSessionValidationState,
+  callAgenticValidate,
+  callAgenticAdvancedParameters,
+  callAgenticSalesAgent,
   getAnalysisProductImages,
+  identifyInstruments,
+  callAgenticProductSearch,
+  resumeProductSearch,
 } from "./api";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -40,6 +46,17 @@ type ConversationStep = WorkflowStep;
 interface AIRecommenderProps {
   initialInput?: string;
   fillParent?: boolean;
+  /**
+   * If true, this AIRecommender instance is for DIRECT product search (e.g., from Run button).
+   * The initialInput is a sample_input and should bypass instrument identification.
+   * Goes directly to Product Search Workflow.
+   */
+  isDirectSearch?: boolean;
+  /**
+   * Product type detected during instrument identification (e.g., "Temperature Sensor").
+   * Passed to product search workflow for proper schema lookup.
+   */
+  productType?: string;
   onStateChange?: (state: {
     messages: ChatMessage[];
     collectedData: { [key: string]: any };
@@ -75,6 +92,8 @@ interface AIRecommenderProps {
 const AIRecommender = ({
   initialInput,
   fillParent,
+  isDirectSearch = false,  // NEW: For direct product search from Run button
+  productType: propProductType,  // NEW: Product type from instrument identification
   onStateChange,
   savedMessages,
   savedCollectedData,
@@ -128,6 +147,7 @@ const AIRecommender = ({
     currentProductType: null,
     validationResult: null,
     analysisResult: null,
+    identifiedItems: null,
     requirementSchema: null,
     isLoading: false,
     inputValue: "",
@@ -135,6 +155,19 @@ const AIRecommender = ({
   });
   const [currentStep, setCurrentStep] = useState<ConversationStep>("greeting");
   const [hasAutoSubmitted, setHasAutoSubmitted] = useState(false);
+
+  // Product search workflow state - tracks active workflow for proper routing
+  const [productSearchWorkflow, setProductSearchWorkflow] = useState<{
+    threadId: string | null;
+    currentPhase: string | null;
+    awaitingUserInput: boolean;
+    missingFields: string[];
+  }>({
+    threadId: null,
+    currentPhase: null,
+    awaitingUserInput: false,
+    missingFields: []
+  });
 
   // Layout states
   const [isStreaming, setIsStreaming] = useState(false);
@@ -474,22 +507,179 @@ const AIRecommender = ({
 
   const mergeRequirementsWithSchema = (provided: { [key: string]: any }, schema: RequirementSchema) => {
     const merged: { [key: string]: any } = { ...provided };
+
+    // Helper function to extract Deep Agent values from a schema object
+    // Deep Agent populates fields with structure: { value: "...", source: "...", confidence: 0.9 }
+    const extractDeepAgentValues = (obj: any, parentKey = ""): { [key: string]: any } => {
+      const extracted: { [key: string]: any } = {};
+
+      if (!obj || typeof obj !== "object") return extracted;
+
+      Object.entries(obj).forEach(([key, val]) => {
+        const fullKey = parentKey ? `${parentKey}.${key}` : key;
+
+        if (val && typeof val === "object" && !Array.isArray(val)) {
+          // Check if this is a Deep Agent value object with 'value' property
+          if ("value" in val && val.value && typeof val.value === "string") {
+            // This field has a Deep Agent value - use it
+            extracted[fullKey] = val.value;
+          } else {
+            // Recurse into nested objects
+            const nested = extractDeepAgentValues(val, fullKey);
+            Object.assign(extracted, nested);
+          }
+        }
+      });
+
+      return extracted;
+    };
+
+    // Extract Deep Agent values from _deep_agent_sections if available
+    const deepAgentSections = (schema as any)?._deep_agent_sections || {};
+    const deepAgentValues = extractDeepAgentValues(deepAgentSections);
+
+    // Also try extracting from the main schema sections
+    const mainSectionNames = ["Performance", "Electrical", "Mechanical", "Environmental",
+      "Compliance", "Features", "Integration", "MechanicalOptions",
+      "ServiceAndSupport", "Certifications"];
+
+    for (const sectionName of mainSectionNames) {
+      const section = (schema as any)?.[sectionName];
+      if (section && typeof section === "object") {
+        const sectionValues = extractDeepAgentValues(section);
+        Object.assign(deepAgentValues, sectionValues);
+      }
+    }
+
+    // Get all schema keys
     const allKeys = [
       ...(schema.mandatoryRequirements ? Object.keys(schema.mandatoryRequirements) : []),
       ...(schema.optionalRequirements ? Object.keys(schema.optionalRequirements) : []),
     ];
+
+    // Merge: user-provided values take priority, then Deep Agent values, then empty
     allKeys.forEach((key) => {
-      if (!(key in merged)) merged[key] = "";
+      if (!(key in merged) || merged[key] === "" || merged[key] === null) {
+        // Check if Deep Agent has a value for this key (try exact match and camelCase variations)
+        const deepValue = deepAgentValues[key] ||
+          deepAgentValues[key.charAt(0).toUpperCase() + key.slice(1)] ||
+          Object.entries(deepAgentValues).find(([k]) =>
+            k.toLowerCase().replace(/[._]/g, "") === key.toLowerCase().replace(/[._]/g, "")
+          )?.[1];
+
+        merged[key] = deepValue || "";
+      }
     });
+
+    console.log(`[MERGE] Merged ${Object.keys(deepAgentValues).length} Deep Agent values into collectedData`);
     return merged;
   };
 
   // --- Core analysis and summary flow ---
-  const performAnalysis = useCallback(async () => {
+  // performAnalysis can be called with optional pre-built requirements (from workflow completion)
+  // or it will build them from state/collectedData (backward compatibility)
+  const performAnalysis = useCallback(async (options?: {
+    finalRequirements?: {
+      productType?: string;
+      mandatoryRequirements?: Record<string, any>;
+      optionalRequirements?: Record<string, any>;
+      advancedParameters?: any[];
+    };
+    schema?: any;
+  }) => {
     setState((prev) => ({ ...prev, isLoading: true }));
     try {
-      const fullInputStr = `Product Type: ${state.productType}. ${composeUserDataString(collectedData)}`;
-      const analysis: AnalysisResult = await analyzeProducts(fullInputStr);
+      // Use provided requirements or build from state
+      const effectiveProductType = options?.finalRequirements?.productType || state.productType || '';
+      const effectiveSchema = options?.schema || state.requirementSchema;
+
+      console.log(`[${searchSessionId}] [PERFORM_ANALYSIS] Starting final product search analysis`);
+      console.log(`[${searchSessionId}] [PERFORM_ANALYSIS] Product Type: ${effectiveProductType}`);
+      console.log(`[${searchSessionId}] [PERFORM_ANALYSIS] Using provided requirements: ${!!options?.finalRequirements}`);
+
+      // Build structured requirements - prefer provided, fallback to state
+      let structuredRequirements: {
+        productType: string;
+        mandatoryRequirements: Record<string, any>;
+        optionalRequirements: Record<string, any>;
+        selectedAdvancedParams: Record<string, any>;
+      };
+
+      if (options?.finalRequirements) {
+        // Use the requirements from workflow completion directly
+        structuredRequirements = {
+          productType: effectiveProductType,
+          mandatoryRequirements: options.finalRequirements.mandatoryRequirements || {},
+          optionalRequirements: options.finalRequirements.optionalRequirements || {},
+          selectedAdvancedParams: {}
+        };
+        // Add advanced parameters if available
+        if (options.finalRequirements.advancedParameters && options.finalRequirements.advancedParameters.length > 0) {
+          for (const param of options.finalRequirements.advancedParameters) {
+            const key = param.name || param.key;
+            if (key) {
+              structuredRequirements.selectedAdvancedParams[key] = param.value || true;
+            }
+          }
+        }
+      } else {
+        // Fallback: Build from state/collectedData
+        structuredRequirements = {
+          productType: effectiveProductType,
+          mandatoryRequirements: effectiveSchema?.mandatoryRequirements || {},
+          optionalRequirements: effectiveSchema?.optionalRequirements || {},
+          selectedAdvancedParams: {}
+        };
+
+        // Merge collected data into requirements
+        if (collectedData) {
+          for (const [key, value] of Object.entries(collectedData)) {
+            if (key !== 'productType' && value) {
+              // Check if it's a mandatory requirement
+              if (structuredRequirements.mandatoryRequirements && key in structuredRequirements.mandatoryRequirements) {
+                structuredRequirements.mandatoryRequirements[key] = value;
+              }
+              // Check if it's an optional requirement
+              else if (structuredRequirements.optionalRequirements && key in structuredRequirements.optionalRequirements) {
+                structuredRequirements.optionalRequirements[key] = value;
+              }
+              // Otherwise treat as additional requirement
+              else {
+                if (!structuredRequirements.optionalRequirements) {
+                  structuredRequirements.optionalRequirements = {};
+                }
+                structuredRequirements.optionalRequirements[key] = value;
+              }
+            }
+          }
+        }
+      }
+
+      console.log(`[${searchSessionId}] [PERFORM_ANALYSIS] Structured requirements:`, {
+        productType: structuredRequirements.productType,
+        mandatoryCount: Object.keys(structuredRequirements.mandatoryRequirements || {}).length,
+        optionalCount: Object.keys(structuredRequirements.optionalRequirements || {}).length,
+        advancedCount: Object.keys(structuredRequirements.selectedAdvancedParams || {}).length
+      });
+
+      // Validate we have required data
+      if (!structuredRequirements.productType) {
+        throw new Error('Product type is required for analysis');
+      }
+
+      // Call new run-analysis endpoint
+      const analysis: AnalysisResult = await runFinalProductAnalysis(
+        structuredRequirements,
+        effectiveProductType,
+        effectiveSchema,
+        searchSessionId
+      );
+
+      console.log(`[${searchSessionId}] [PERFORM_ANALYSIS] Analysis complete:`, {
+        totalMatches: analysis.totalMatches,
+        exactMatches: analysis.exactMatchCount,
+        approximateMatches: analysis.approximateMatchCount
+      });
 
       // Thresholds for match quality
       // Exact matches: No score threshold - show ALL products where requirementsMatch === true
@@ -511,9 +701,19 @@ const AIRecommender = ({
       const count = exactMatches.length > 0 ? exactMatches.length : approximateMatches.length;
       const displayMode = exactMatches.length > 0 ? 'exact' : 'approximate';
 
-      const message = exactMatches.length > 0
-        ? `Found ${exactMatches.length} product${exactMatches.length !== 1 ? 's' : ''} matching all requirements`
-        : `No exact matches found. Found ${approximateMatches.length} close alternative${approximateMatches.length !== 1 ? 's' : ''}`;
+
+      // Check if any vendors were actually analyzed
+      const vendorsAnalyzed = analysis.vendorAnalysis?.vendorsAnalyzed ?? 0;
+
+      let message = "";
+
+      if (vendorsAnalyzed === 0) {
+        message = "No vendors found for this product type in the database.";
+      } else {
+        message = exactMatches.length > 0
+          ? `Found ${exactMatches.length} product${exactMatches.length !== 1 ? 's' : ''} matching all requirements`
+          : `No exact matches found. Found ${approximateMatches.length} close alternative${approximateMatches.length !== 1 ? 's' : ''}`;
+      }
 
       // ✅ Fetch images ONLY for products that will be displayed
       // If exact matches exist, fetch only for exact matches
@@ -583,18 +783,20 @@ const AIRecommender = ({
         console.log(`[IMAGE_FETCH] No products to fetch images for (displayMode: ${displayMode})`);
       }
 
-      // Show same message for both exact and approximate matches (no warning)
-      const contextMessage = `Analysis complete. ${message}.`;
 
-      const llmResponse = await generateAgentResponse(
+      // Let the Sales Agent compute the accurate product count message from analysisResult
+      const contextMessage = `Analysis complete.`;
+
+
+      const llmResponse = await callAgenticSalesAgent(
         "finalAnalysis",
+        contextMessage,
         {
           analysisResult: analysis,
           displayMode
         },
-        contextMessage,
-        undefined,
-        searchSessionId
+        searchSessionId,
+        "workflow"
       );
       await streamAssistantMessage(llmResponse.content);
 
@@ -607,12 +809,12 @@ const AIRecommender = ({
       });
     } catch (error) {
       console.error("Analysis error:", error);
-      const llmResponse = await generateAgentResponse(
+      const llmResponse = await callAgenticSalesAgent(
         "analysisError",
-        {},
         "An error occurred during final analysis.",
-        undefined,
-        searchSessionId
+        {},
+        searchSessionId,
+        "workflow"
       );
       await streamAssistantMessage(llmResponse.content);
       setState((prev) => ({ ...prev, isLoading: false }));
@@ -623,43 +825,220 @@ const AIRecommender = ({
   const handleShowSummaryAndProceed = useCallback(async (options?: { skipIntro?: boolean; introAlreadyStreamed?: boolean; skipAnalysis?: boolean }) => {
     setState((prev) => ({ ...prev, isLoading: true }));
     try {
-      const requirementsOnly = (({ productType, ...rest }) => rest)(collectedData);
-      const requirementsString = composeUserDataString(requirementsOnly);
-      const structuredResponse = await structureRequirements(requirementsString);
-      const summaryContent = structuredResponse.structuredRequirements;
+      // Include productType in the requirements string to avoid empty input
+      const requirementsString = collectedData.productType
+        ? `Product Type: ${collectedData.productType}. ${composeUserDataString(collectedData)}`
+        : composeUserDataString(collectedData);
+
+      // If no requirements, still show a summary message
+      let summaryContent = "";
+      if (!requirementsString || requirementsString.trim().length === 0) {
+        summaryContent = `**Product Type:** ${state.productType || 'Not specified'}\n\nNo additional requirements specified.`;
+      } else {
+        try {
+          const structuredResponse = await structureRequirements(requirementsString);
+          summaryContent = structuredResponse.structuredRequirements;
+        } catch (structureError) {
+          console.warn("Failed to structure requirements, using raw data:", structureError);
+          summaryContent = `**Product Type:** ${state.productType || collectedData.productType || 'Not specified'}\n\n**Collected Requirements:**\n${requirementsString}`;
+        }
+      }
 
       if (!options?.skipIntro && !options?.introAlreadyStreamed) {
-        const summaryIntro = await generateAgentResponse(
+        const summaryIntro = await callAgenticSalesAgent(
           "showSummary",
-          collectedData,
           "Summary of requirements is ready.",
-          undefined,
-          searchSessionId
+          collectedData,
+          searchSessionId,
+          "workflow"
         );
         await streamAssistantMessage(summaryIntro.content);
       }
 
+      // Display the summary
       addMessage({ type: "assistant", content: `\n\n${summaryContent}\n\n`, role: undefined });
 
-      // ✅ Always call analysis immediately after structure response
-      // Analysis should be called right after structure_requirements response
+      // Check if we should skip analysis (wait for user confirmation)
+      if (options?.skipAnalysis) {
+        // Show message asking for confirmation to proceed
+        await streamAssistantMessage("\nWould you like to proceed with the product analysis? Type **'yes'** or **'proceed'** to continue.");
+        setState((prev) => ({ ...prev, isLoading: false }));
+        setCurrentStep("showSummary");
+        return;
+      }
+
+      // Run analysis if not skipping
       await performAnalysis();
 
       setState((prev) => ({ ...prev, isLoading: false }));
     } catch (error) {
       console.error("Summary error:", error);
-      const llmResponse = await generateAgentResponse(
-        "showSummary",
-        {},
-        "Error generating summary.",
-        undefined,
-        searchSessionId
-      );
-      await streamAssistantMessage(llmResponse.content);
+      // Fallback: Show basic summary with collected data
+      const fallbackSummary = `**Product Type:** ${state.productType || 'Not specified'}\n\n` +
+        `I've gathered your requirements. Would you like to proceed with the product analysis?\n\n` +
+        `Type **'yes'** or **'proceed'** to continue.`;
+      await streamAssistantMessage(fallbackSummary);
       setState((prev) => ({ ...prev, isLoading: false }));
       setCurrentStep("showSummary");
     }
-  }, [collectedData, performAnalysis, streamAssistantMessage, addMessage, searchSessionId]);
+  }, [collectedData, state.productType, performAnalysis, streamAssistantMessage, addMessage, searchSessionId, isDirectSearch]);
+
+  // Helper function to run direct product search from RightPanel
+  const handleRunProductSearch = async (sampleInput: string) => {
+    console.log(`[${searchSessionId}] ====== PRODUCT SEARCH TRIGGERED ======`);
+    console.log(`[${searchSessionId}] sampleInput: ${sampleInput?.substring(0, 100)}...`);
+    console.log(`[${searchSessionId}] searchSessionId: ${searchSessionId}`);
+
+    setState((prev) => ({ ...prev, isLoading: true }));
+    // Add user message to chat to reflect the action
+    const displayMessage: ChatMessage = {
+      role: "user",
+      id: crypto.randomUUID(),
+      type: "user",
+      content: sampleInput,
+      timestamp: new Date()
+    };
+    setState((prev) => ({
+      ...prev,
+      messages: [...prev.messages, displayMessage]
+    }));
+
+    try {
+      // Call PRODUCT SEARCH endpoint directly
+      // Use propProductType from parent (instrument/solution workflow) or state.productType
+      const effectiveProductType = propProductType || state.productType || undefined;
+      const sourceWorkflow = isDirectSearch ? 'instrument_identifier' : 'direct';
+
+      console.log(`[${searchSessionId}] [AGENTIC_PS] Calling /api/agentic/product-search`);
+      console.log(`[${searchSessionId}] [AGENTIC_PS] Payload:`, {
+        message: sampleInput.substring(0, 50),
+        session_id: searchSessionId,
+        product_type: effectiveProductType,
+        source_workflow: sourceWorkflow
+      });
+
+      const result = await callAgenticProductSearch(
+        sampleInput,
+        undefined, // threadId - first call
+        searchSessionId,
+        effectiveProductType,
+        sourceWorkflow
+      );
+
+      console.log(`[${searchSessionId}] [AGENTIC_PS] Response received:`, {
+        success: result.success,
+        hasResponse: !!result.sales_agent_response,
+        hasSchema: !!result.schema,
+        currentPhase: result.current_phase,
+        awaitingInput: result.awaiting_user_input,
+        rankedProductsCount: result.ranked_products?.length || 0
+      });
+
+      if (result.success) {
+        // ============================================================
+        // UPDATE LEFT SIDEBAR with schema if available
+        // ============================================================
+        if (result.schema) {
+          console.log(`[${searchSessionId}] [AGENTIC_PS] Schema received - updating left sidebar`);
+          console.log(`[${searchSessionId}] [AGENTIC_PS] Raw schema keys:`, Object.keys(result.schema));
+          console.log(`[${searchSessionId}] [AGENTIC_PS] mandatoryRequirements:`, result.schema.mandatoryRequirements);
+          console.log(`[${searchSessionId}] [AGENTIC_PS] optionalRequirements:`, result.schema.optionalRequirements);
+
+          // Extract schema structure for RequirementSchema type
+          const schemaForSidebar = {
+            mandatoryRequirements: result.schema.mandatoryRequirements || result.schema.mandatory || {},
+            optionalRequirements: result.schema.optionalRequirements || result.schema.optional || {},
+            default: {
+              mandatory: result.schema.mandatoryRequirements || result.schema.mandatory || {},
+              optional: result.schema.optionalRequirements || result.schema.optional || {}
+            }
+          };
+          console.log(`[${searchSessionId}] [AGENTIC_PS] schemaForSidebar:`, schemaForSidebar);
+
+          setState((prev) => ({
+            ...prev,
+            requirementSchema: schemaForSidebar as any,
+            currentProductType: result.product_type || prev.currentProductType,
+            productType: result.product_type || prev.productType
+          }));
+
+          // Auto-undock sidebar to show schema
+          setIsDocked(false);
+        }
+
+        // ============================================================
+        // STORE THREAD_ID for follow-up calls
+        // ============================================================
+        if (result.thread_id) {
+          console.log(`[${searchSessionId}] [AGENTIC_PS] Stored thread_id: ${result.thread_id}`);
+        }
+
+        // Display the sales agent response
+        if (result.sales_agent_response) {
+          console.log(`[${searchSessionId}] [AGENTIC_PS] Streaming response to chat`);
+          await streamAssistantMessage(result.sales_agent_response);
+        }
+
+        // ============================================================
+        // HANDLE AWAITING_USER_INPUT - workflow is paused
+        // Store workflow state so handleSendMessage can route to resumeProductSearch
+        // ============================================================
+        if (result.awaiting_user_input) {
+          console.log(`[${searchSessionId}] [AGENTIC_PS] Workflow paused - awaiting user input`);
+          console.log(`[${searchSessionId}] [AGENTIC_PS] Current phase: ${result.current_phase}`);
+          console.log(`[${searchSessionId}] [AGENTIC_PS] Missing fields: ${result.missing_fields?.join(', ')}`);
+
+          // Store workflow state for routing subsequent messages
+          setProductSearchWorkflow({
+            threadId: result.thread_id,
+            currentPhase: result.current_phase,
+            awaitingUserInput: true,
+            missingFields: result.missing_fields || []
+          });
+
+          // Set workflow step based on current phase - use valid WorkflowStep values
+          if (result.current_phase === 'await_missing_fields' || result.current_phase === 'collect_missing_fields') {
+            setCurrentStep('awaitMissingInfo');
+          } else if (result.current_phase === 'await_advanced_params') {
+            setCurrentStep('awaitAdditionalAndLatestSpecs');
+          } else {
+            // Map other phases to valid WorkflowStep values
+            setCurrentStep('awaitMissingInfo');
+          }
+        } else {
+          // Workflow not awaiting input - clear the tracking state
+          setProductSearchWorkflow({
+            threadId: null,
+            currentPhase: null,
+            awaitingUserInput: false,
+            missingFields: []
+          });
+        }
+
+        // Set ranked products if available
+        if (result.ranked_products && result.ranked_products.length > 0) {
+          console.log(`[${searchSessionId}] [AGENTIC_PS] Setting ${result.ranked_products.length} ranked products`);
+          const analysisResult = {
+            overallRanking: {
+              rankedProducts: result.ranked_products
+            }
+          };
+          setState((prev) => ({ ...prev, analysisResult: analysisResult as any, identifiedItems: null }));
+        }
+      } else {
+        console.error(`[${searchSessionId}] [AGENTIC_PS] Request failed:`, result.error);
+        await streamAssistantMessage(`Sorry, I encountered an error: ${result.error}`);
+      }
+
+    } catch (error) {
+      console.error(`[${searchSessionId}] [AGENTIC_PS] Direct search failed:`, error);
+      await streamAssistantMessage("Sorry, I encountered an error running that search.");
+    } finally {
+      console.log(`[${searchSessionId}] [AGENTIC_PS] ====== PRODUCT SEARCH COMPLETE ======`);
+      setState((prev) => ({ ...prev, isLoading: false }));
+    }
+  };
+
 
   // --- New workflow-aware message handler ---
   const handleSendMessage = useCallback(
@@ -672,21 +1051,215 @@ const AIRecommender = ({
       setState((prev) => ({ ...prev, inputValue: "", isLoading: true }));
 
       try {
+        // ============================================================
+        // PRODUCT SEARCH WORKFLOW ROUTING
+        // If we're in an active product search workflow awaiting input,
+        // route the message through resumeProductSearch instead of normal flow
+        // ============================================================
+        if (productSearchWorkflow.awaitingUserInput && productSearchWorkflow.threadId) {
+          console.log(`[${searchSessionId}] [AGENTIC_PS] Routing to resumeProductSearch`);
+          console.log(`[${searchSessionId}] [AGENTIC_PS] Thread: ${productSearchWorkflow.threadId}, Phase: ${productSearchWorkflow.currentPhase}`);
+
+          // Determine user decision based on input
+          const normalizedInput = trimmedInput.toLowerCase().trim();
+          let userDecision: string | undefined;
+          let userProvidedFields: Record<string, any> | undefined;
+
+          // Check for yes/no/continue patterns
+          // For 'await_missing_fields': Question is "add missing details or continue anyway?"
+          // - 'yes', 'continue', 'proceed', 'skip' = Continue without adding (skip missing fields)
+          // - 'add', 'provide', 'no' = User wants to add the missing fields
+          const wantsToContinue = /^(yes|y|yeah|yep|sure|ok|okay|continue|proceed|skip)$/i.test(normalizedInput);
+          const wantsToAdd = /^(no|n|nope|add|provide)$/i.test(normalizedInput);
+
+          if (productSearchWorkflow.currentPhase === 'await_missing_fields') {
+            // User is deciding whether to add missing fields
+            // Question: "Would you like to add... or continue anyway?"
+            // "yes" = "yes, continue anyway" (the natural reading)
+            if (wantsToContinue) {
+              userDecision = 'continue';    // User wants to skip and continue to advanced params
+            } else if (wantsToAdd) {
+              userDecision = 'add_fields';  // User explicitly wants to add missing fields
+            }
+          } else if (productSearchWorkflow.currentPhase === 'collect_missing_fields') {
+            // User is providing field values - parse as field data
+            userProvidedFields = { userInput: trimmedInput };
+          } else if (productSearchWorkflow.currentPhase === 'await_advanced_params') {
+            // User is deciding whether to discover advanced specs
+            // "yes" = discover advanced specs, "no" = skip
+            if (wantsToContinue || wantsToAdd) {
+              // Any affirmative = yes to advanced params
+              userDecision = wantsToContinue ? 'yes' : 'no';
+            }
+          } else if (productSearchWorkflow.currentPhase === 'await_advanced_selection') {
+            // User is selecting which advanced specs to add
+            // Context: "Would you like to add any of these? Say 'all', select by name, or 'no' to skip"
+            const wantsAll = /^(all|yes|everything|add all)$/i.test(normalizedInput);
+            const wantsNone = /^(no|n|nope|skip|none|proceed)$/i.test(normalizedInput);
+
+            if (wantsNone) {
+              userDecision = 'no';  // Skip advanced specs, proceed to summary/analysis
+            } else if (wantsAll) {
+              userDecision = 'all';  // Add all discovered specs
+            }
+            // Otherwise, let the input pass through for spec name matching on the backend
+          }
+
+          // Call resumeProductSearch with user's decision
+          const result = await resumeProductSearch(
+            productSearchWorkflow.threadId,
+            userDecision,
+            userProvidedFields,
+            userDecision ? undefined : trimmedInput, // Only pass as user_input if not a decision
+            searchSessionId
+          );
+
+          console.log(`[${searchSessionId}] [AGENTIC_PS] Resume result:`, {
+            success: result.success,
+            currentPhase: result.current_phase,
+            awaitingInput: result.awaiting_user_input,
+            completed: result.completed
+          });
+
+          if (result.success) {
+            // Display response
+            if (result.sales_agent_response) {
+              await streamAssistantMessage(result.sales_agent_response);
+            }
+
+            // Update workflow state
+            if (result.awaiting_user_input) {
+              setProductSearchWorkflow({
+                threadId: result.thread_id,
+                currentPhase: result.current_phase,
+                awaitingUserInput: true,
+                missingFields: result.missing_fields || []
+              });
+
+              // Update UI step
+              if (result.current_phase === 'await_missing_fields' || result.current_phase === 'collect_missing_fields') {
+                setCurrentStep('awaitMissingInfo');
+              } else if (result.current_phase === 'await_advanced_params') {
+                setCurrentStep('awaitAdditionalAndLatestSpecs');
+              }
+            } else {
+              // Workflow complete or transitioned
+              setProductSearchWorkflow({
+                threadId: null,
+                currentPhase: null,
+                awaitingUserInput: false,
+                missingFields: []
+              });
+
+              if (result.completed) {
+                setCurrentStep('showSummary');
+
+                // Display summary of collected requirements
+                if (result.final_requirements) {
+                  const reqs = result.final_requirements;
+                  let summaryMessage = `\n\n**📋 Requirements Summary**\n\n`;
+                  summaryMessage += `**Product Type:** ${reqs.productType || 'Not specified'}\n\n`;
+
+                  // Mandatory requirements
+                  const mandatory = reqs.mandatoryRequirements || {};
+                  if (Object.keys(mandatory).length > 0) {
+                    summaryMessage += `**Mandatory Requirements:**\n`;
+                    for (const [key, value] of Object.entries(mandatory)) {
+                      summaryMessage += `• ${key}: ${value}\n`;
+                    }
+                    summaryMessage += `\n`;
+                  }
+
+                  // Optional requirements
+                  const optional = reqs.optionalRequirements || {};
+                  if (Object.keys(optional).length > 0) {
+                    summaryMessage += `**Optional Requirements:**\n`;
+                    for (const [key, value] of Object.entries(optional)) {
+                      summaryMessage += `• ${key}: ${value}\n`;
+                    }
+                    summaryMessage += `\n`;
+                  }
+
+                  // Advanced parameters
+                  const advanced = reqs.advancedParameters || [];
+                  if (advanced.length > 0) {
+                    summaryMessage += `**Advanced Specifications:** ${advanced.length} discovered\n`;
+                    for (const spec of advanced.slice(0, 5)) {
+                      summaryMessage += `• ${spec.name || spec.key}\n`;
+                    }
+                    if (advanced.length > 5) {
+                      summaryMessage += `• ... and ${advanced.length - 5} more\n`;
+                    }
+                  }
+
+                  summaryMessage += `\n🔍 **Starting vendor analysis now...**`;
+                  await streamAssistantMessage(summaryMessage);
+                }
+
+                // Auto-trigger final analysis with the collected requirements
+                console.log(`[${searchSessionId}] [AGENTIC_PS] Workflow complete - auto-triggering performAnalysis()`);
+                console.log(`[${searchSessionId}] [AGENTIC_PS] Passing final_requirements:`, result.final_requirements);
+
+                await performAnalysis({
+                  finalRequirements: result.final_requirements,
+                  schema: result.schema
+                });
+              }
+            }
+
+            // Update schema display if updated
+            if (result.schema) {
+              const schemaForSidebar = {
+                mandatoryRequirements: result.schema.mandatoryRequirements || {},
+                optionalRequirements: result.schema.optionalRequirements || {},
+                default: {
+                  mandatory: result.schema.mandatoryRequirements || {},
+                  optional: result.schema.optionalRequirements || {}
+                }
+              };
+              setState((prev) => ({
+                ...prev,
+                requirementSchema: schemaForSidebar as any
+              }));
+            }
+
+            // Handle ranked products if workflow is complete
+            if (result.ranked_products && result.ranked_products.length > 0) {
+              const analysisResult = {
+                overallRanking: {
+                  rankedProducts: result.ranked_products
+                }
+              };
+              setState((prev) => ({ ...prev, analysisResult: analysisResult as any }));
+            }
+          } else {
+            // Error - show message
+            await streamAssistantMessage(result.error || "Sorry, I encountered an error processing your response.");
+          }
+
+          setState((prev) => ({ ...prev, isLoading: false }));
+          return; // Exit - we've handled the message through product search workflow
+        }
+
+        // ============================================================
+        // NORMAL WORKFLOW FLOW - Intent classification + Flask endpoints
+        // ============================================================
+
         // Step 1: Classify user intent (with session ID for isolation)
         const intentResult: IntentClassificationResult = await classifyIntent(trimmedInput, searchSessionId);
         console.log('Intent classification result:', intentResult);
 
         // Handle knowledge questions (interrupts workflow)
         if (intentResult.intent === "knowledgeQuestion") {
-          const agentResponse: AgentResponse = await generateAgentResponse(
+          const agentResponse: AgentResponse = await callAgenticSalesAgent(
             currentStep,
+            trimmedInput,
             {
               productType: state.productType,
               collectedData: collectedData
             },
-            trimmedInput,
-            "knowledgeQuestion",
-            searchSessionId
+            searchSessionId,
+            "knowledgeQuestion"
           );
 
           await streamAssistantMessage(agentResponse.content);
@@ -710,8 +1283,15 @@ const AIRecommender = ({
               throw new Error("No collected data available for summary");
             }
 
-            const requirementsOnly = (({ productType, ...rest }) => rest)(collectedData);
-            const requirementsString = composeUserDataString(requirementsOnly);
+            const requirementsString = collectedData.productType
+              ? `Product Type: ${collectedData.productType}. ${composeUserDataString(collectedData)}`
+              : composeUserDataString(collectedData);
+
+            // Validate that we have something to send
+            if (!requirementsString || requirementsString.trim().length === 0) {
+              throw new Error("No requirements data to structure");
+            }
+
             const structuredResponse = await structureRequirements(requirementsString);
             const summaryContent = structuredResponse.structuredRequirements;
 
@@ -751,12 +1331,12 @@ const AIRecommender = ({
 
         switch (targetStep) {
           case "greeting": {
-            agentResponse = await generateAgentResponse(
+            agentResponse = await callAgenticSalesAgent(
               "greeting",
-              {},
               trimmedInput,
-              undefined,
-              searchSessionId
+              {},
+              searchSessionId,
+              "workflow"
             );
             await streamAssistantMessage(agentResponse.content);
             setCurrentStep("initialInput");
@@ -764,72 +1344,186 @@ const AIRecommender = ({
           }
 
           case "initialInput": {
-            // Process product requirements
-            console.log('Processing initialInput - calling validateRequirements with:', trimmedInput);
+            // Process product requirements using AGENTIC VALIDATION TOOL
+            console.log(`[${searchSessionId}] [AGENTIC] Processing initialInput with validation tool`);
             try {
-              const validation: ValidationResult = await validateRequirements(trimmedInput, undefined, searchSessionId, currentStep);
-              if (!validation.productType) {
-                agentResponse = await generateAgentResponse("initialInput", {}, "No product type detected.", undefined, searchSessionId);
+              // STEP 1: Call Agentic Validation Tool
+              console.log(`[${searchSessionId}] [VALIDATION] Calling callAgenticValidate...`);
+              const validationResult = await callAgenticValidate(
+                trimmedInput,
+                undefined, // no product type hint
+                searchSessionId,
+                true // enable PPI
+              );
+
+              if (!validationResult.productType) {
+                console.error(`[${searchSessionId}] [VALIDATION] No product type detected`);
+                agentResponse = await callAgenticSalesAgent("initialInput", "No product type detected.", {}, searchSessionId, "workflow");
                 await streamAssistantMessage(agentResponse.content);
                 setCurrentStep("initialInput");
                 break;
               }
 
-              const schema = await getRequirementSchema(validation.productType);
-              const flatRequirements = flattenRequirements(validation.providedRequirements);
+              console.log(`[${searchSessionId}] [VALIDATION] Product type: ${validationResult.productType}`);
+              console.log(`[${searchSessionId}] [VALIDATION] Valid: ${validationResult.isValid}`);
+              console.log(`[${searchSessionId}] [VALIDATION] Missing fields: ${validationResult.missingFields?.length || 0}`);
+
+              // STEP 2: Generate AI Response using Sales Agent Tool
+              console.log(`[${searchSessionId}] [SALES_AGENT] Generating response for validation result...`);
+              const salesAgentResponse = await callAgenticSalesAgent(
+                "initialInput",
+                trimmedInput,
+                {
+                  product_type: validationResult.productType,
+                  schema: validationResult.schema,
+                  provided_requirements: validationResult.providedRequirements,
+                  missing_fields: validationResult.missingFields,
+                  is_valid: validationResult.isValid,
+                  ppi_workflow_used: validationResult.ppiWorkflowUsed,
+                  schema_source: validationResult.schemaSource
+                },
+                searchSessionId,
+                "workflow"
+              );
+
+              console.log(`[${searchSessionId}] [SALES_AGENT] Response generated, nextStep: ${salesAgentResponse.nextStep}`);
+
+              // Convert agentic format to legacy format for compatibility
+              const schema = validationResult.schema;
+              const flatRequirements = flattenRequirements(validationResult.providedRequirements);
               const mergedData = mergeRequirementsWithSchema(flatRequirements, schema);
 
-              if (validation.validationAlert) {
-                // Missing mandatory fields - update state and show validation message
-                setCollectedData(mergedData);
-                setState((prev) => ({
-                  ...prev,
-                  requirementSchema: schema,
-                  productType: validation.productType,
-                  currentProductType: validation.productType,
-                  validationResult: validation,
-                }));
-                // Ask the user for missing info (LLM will later decide on confirmation)
-                await streamAssistantMessage(validation.validationAlert.message);
-                // Undock the sidebar after the response message is streamed
-                setIsDocked(false);
+              // STEP 3: Update state with validation results
+              setCollectedData(mergedData);
+              setState((prev) => ({
+                ...prev,
+                requirementSchema: schema,
+                productType: validationResult.productType,
+                currentProductType: validationResult.productType,
+                validationResult: {
+                  ...validationResult,
+                  validationAlert: validationResult.missingFields && validationResult.missingFields.length > 0 ? {
+                    message: salesAgentResponse.content,
+                    missingFields: validationResult.missingFields
+                  } : undefined
+                },
+              }));
+
+              // STEP 4: Display AI-generated response
+              await streamAssistantMessage(salesAgentResponse.content);
+
+              // Undock the sidebar to show schema
+              setIsDocked(false);
+
+              // STEP 5: Transition to next step based on validation result
+              if (salesAgentResponse.nextStep) {
+                setCurrentStep(salesAgentResponse.nextStep as any);
+              } else if (!validationResult.isValid && validationResult.missingFields && validationResult.missingFields.length > 0) {
+                // Missing fields - wait for user to provide them
                 setCurrentStep("awaitMissingInfo");
               } else {
-                // All mandatory fields provided - fetch agent response FIRST before updating state
-                // This ensures the sidebar undocking and response message appear at the same time
-                agentResponse = await generateAgentResponse(
-                  "initialInputWithSpecs",
-                  {
-                    productType: validation.productType,
-                    requirements: flatRequirements
-                  },
-                  `Product type detected: ${validation.productType}. All mandatory requirements provided.`,
-                  undefined,
-                  searchSessionId
+                // All fields provided - ask about advanced parameters
+                setCurrentStep("awaitAdditionalAndLatestSpecs");
+              }
+
+              console.log(`[${searchSessionId}] [VALIDATION] Complete. Next step: ${salesAgentResponse.nextStep || currentStep}`);
+
+            } catch (error) {
+              console.error(`[${searchSessionId}] [VALIDATION] Error:`, error);
+              agentResponse = await callAgenticSalesAgent("default", "Error during validation. Please try again.", {}, searchSessionId, "workflow");
+              await streamAssistantMessage(agentResponse.content);
+              setCurrentStep("initialInput");
+            }
+            break;
+          }
+
+          case "awaitMissingInfo": {
+            // Handle missing mandatory fields collection step
+            console.log(`[${searchSessionId}] [MISSING_INFO] Processing user response for missing fields`);
+            try {
+              // Call sales agent to handle missing info response
+              const missingInfoResponse = await callAgenticSalesAgent(
+                "awaitMissingInfo",
+                trimmedInput,
+                {
+                  productType: state.productType,
+                  schema: state.requirementSchema,
+                  missingFields: state.validationResult?.missingFields || [],
+                  collectedData: collectedData
+                },
+                searchSessionId,
+                "workflow"
+              );
+
+              console.log(`[${searchSessionId}] [MISSING_INFO] Response received, nextStep: ${missingInfoResponse.nextStep}`);
+
+              // Check if re-validation is needed (user provided new info)
+              if (missingInfoResponse.requiresRevalidation && trimmedInput.trim()) {
+                console.log(`[${searchSessionId}] [MISSING_INFO] Re-validating with new user input`);
+
+                // Re-run validation with combined input
+                const originalInput = state.validationResult?.originalInput || '';
+                const combinedInput = `${originalInput} ${trimmedInput}`;
+
+                const revalidationResult = await callAgenticValidate(
+                  combinedInput,
+                  state.productType || undefined,
+                  searchSessionId,
+                  true
                 );
 
-                // Now update state and stream message together
+                console.log(`[${searchSessionId}] [MISSING_INFO] Re-validation complete. Missing fields: ${revalidationResult.missingFields?.length || 0}`);
+
+                // Update state with new validation result
+                const schema = revalidationResult.schema;
+                const flatRequirements = flattenRequirements(revalidationResult.providedRequirements);
+                const mergedData = mergeRequirementsWithSchema(flatRequirements, schema);
+
                 setCollectedData(mergedData);
                 setState((prev) => ({
                   ...prev,
                   requirementSchema: schema,
-                  productType: validation.productType,
-                  currentProductType: validation.productType,
-                  validationResult: validation,
+                  validationResult: {
+                    ...revalidationResult,
+                    originalInput: combinedInput
+                  },
                 }));
-                // Stream the response message AND undock sidebar at the same time
-                await streamAssistantMessage(agentResponse.content);
-                setIsDocked(false);
 
-                // Use LLM nextStep if provided, otherwise fall back to awaitAdditionalAndLatestSpecs
-                if (agentResponse.nextStep) setCurrentStep(agentResponse.nextStep as any);
-                else setCurrentStep("awaitAdditionalAndLatestSpecs");
+                // Check if still missing fields
+                if (revalidationResult.missingFields && revalidationResult.missingFields.length > 0) {
+                  // Still missing fields - ask again
+                  const formattedFields = revalidationResult.missingFields.slice(0, 5).join(", ");
+                  const remaining = revalidationResult.missingFields.length > 5
+                    ? ` and ${revalidationResult.missingFields.length - 5} more`
+                    : "";
+
+                  await streamAssistantMessage(
+                    `Thank you! I've captured those details.\n\n` +
+                    `There are still some specifications we need: **${formattedFields}${remaining}**\n\n` +
+                    `Would you like to provide these, or type 'proceed' to continue?`
+                  );
+                  setCurrentStep("awaitMissingInfo");
+                } else {
+                  // All fields provided now
+                  await streamAssistantMessage(
+                    `Excellent! I've captured all the required specifications.\n\n` +
+                    `Would you like to add any additional or advanced specifications?`
+                  );
+                  setCurrentStep("awaitAdditionalAndLatestSpecs");
+                }
+              } else {
+                // Display response and follow nextStep
+                await streamAssistantMessage(missingInfoResponse.content);
+
+                if (missingInfoResponse.nextStep) {
+                  setCurrentStep(missingInfoResponse.nextStep as any);
+                }
               }
+
             } catch (error) {
-              console.error("Initial input error:", error);
-              agentResponse = await generateAgentResponse("default", {}, "Error during initial processing.", undefined, searchSessionId);
-              await streamAssistantMessage(agentResponse.content);
-              setCurrentStep("initialInput");
+              console.error(`[${searchSessionId}] [MISSING_INFO] Error:`, error);
+              await streamAssistantMessage("I encountered an error processing your response. Please try again.");
+              setCurrentStep("awaitMissingInfo");
             }
             break;
           }
@@ -842,20 +1536,66 @@ const AIRecommender = ({
               const isNo = /^(no|n|nope|skip)$/i.test(normalizedInput);
 
               // Always send to backend to handle yes/no logic and state tracking
-              agentResponse = await generateAgentResponse(
+              agentResponse = await callAgenticSalesAgent(
                 "awaitAdditionalAndLatestSpecs",
-                { productType: state.productType, collectedData },
                 trimmedInput,
-                undefined,
-                searchSessionId
+                { productType: state.productType, collectedData },
+                searchSessionId,
+                "workflow"
               );
 
               // Follow backend's nextStep decision
               if (agentResponse.nextStep) {
                 if (agentResponse.nextStep === "awaitAdvancedSpecs") {
-                  // User said YES - backend already discovered parameters and formatted the response
-                  // Just stream the response which contains the parameters list
+                  // User said YES - discover advanced parameters using AGENTIC WRAPPER
                   await streamAssistantMessage(agentResponse.content);
+
+                  // STEP 1: Discover advanced parameters using the agentic wrapper API
+                  console.log(`[${searchSessionId}] [AGENTIC] Discovering advanced parameters for: ${state.productType}`);
+                  try {
+                    const advancedParamsResult = await callAgenticAdvancedParameters(
+                      state.productType!,
+                      searchSessionId
+                    );
+
+                    console.log(`[${searchSessionId}] [ADVANCED_PARAMS] Discovered ${advancedParamsResult.totalUniqueSpecifications} parameters`);
+
+                    // Store discovered parameters in state
+                    setAdvancedParameters(advancedParamsResult);
+
+                    // STEP 2: Generate AI response using Sales Agent Tool
+                    console.log(`[${searchSessionId}] [SALES_AGENT] Generating response for advanced parameters...`);
+                    const paramsResponse = await callAgenticSalesAgent(
+                      "awaitAdvancedSpecs",
+                      "Yes, show me advanced options",
+                      {
+                        product_type: state.productType,
+                        schema: state.requirementSchema,
+                        provided_requirements: collectedData,
+                        discovered_parameters: advancedParamsResult.uniqueSpecifications || []
+                      },
+                      searchSessionId,
+                      "workflow"
+                    );
+
+                    // STEP 3: Display AI-generated response with parameters
+                    await streamAssistantMessage(paramsResponse.content);
+
+                    // If no AI response, fall back to formatted list
+                    if (!paramsResponse.content && advancedParamsResult.uniqueSpecifications && advancedParamsResult.uniqueSpecifications.length > 0) {
+                      const paramsList = advancedParamsResult.uniqueSpecifications
+                        .map((spec: any, idx: number) => `${idx + 1}. ${spec.name}`)
+                        .join('\n');
+
+                      const fallbackMessage = `\n\nI've discovered the following latest advanced specifications:\n\n${paramsList}\n\nWould you like to add any of these to your requirements? You can say "all", select specific ones by name, or say "no" to skip.`;
+                      await streamAssistantMessage(fallbackMessage);
+                    }
+
+                  } catch (error) {
+                    console.error(`[${searchSessionId}] [ADVANCED_PARAMS] Discovery failed:`, error);
+                    await streamAssistantMessage("\n\nI had trouble discovering advanced parameters. Let's continue without them.");
+                  }
+
                   setCurrentStep("awaitAdvancedSpecs");
                 } else if (agentResponse.nextStep === "showSummary") {
                   // User said "no" - stream the transition message first
@@ -875,7 +1615,7 @@ const AIRecommender = ({
               }
             } catch (error) {
               console.error("Additional and latest specs error:", error);
-              agentResponse = await generateAgentResponse("awaitAdditionalAndLatestSpecs", {}, "Error processing additional specifications.", undefined, searchSessionId);
+              agentResponse = await callAgenticSalesAgent("awaitAdditionalAndLatestSpecs", "Error processing additional specifications.", {}, searchSessionId, "workflow");
               await streamAssistantMessage(agentResponse.content);
               setCurrentStep("awaitAdditionalAndLatestSpecs");
             }
@@ -892,55 +1632,61 @@ const AIRecommender = ({
 
               if (advancedParameters) {
                 // If we already discovered parameters locally, attempt to parse selections
+                // Convert the agentic format to the expected format
+                const availableParams = advancedParameters.uniqueSpecifications?.map((spec: any) => spec.name || spec.key) ||
+                  advancedParameters.uniqueParameters || [];
+
                 const selectionResult = await addAdvancedParameters(
                   state.productType!,
                   trimmedInput,
-                  advancedParameters.uniqueParameters
+                  availableParams
                 );
 
                 if (selectionResult.totalSelected > 0) {
                   const updatedData = { ...collectedData, ...selectionResult.selectedParameters };
                   setCollectedData(updatedData);
                   setSelectedAdvancedParams({ ...selectedAdvancedParams, ...selectionResult.selectedParameters });
+                  console.log(`[${searchSessionId}] [ADVANCED_PARAMS] Selected ${selectionResult.totalSelected} parameters`);
                 }
 
                 // Let backend generate the response (including parameter list display)
-                agentResponse = await generateAgentResponse(
+                agentResponse = await callAgenticSalesAgent(
                   "awaitAdvancedSpecs",
+                  trimmedInput,
                   {
                     productType: state.productType,
                     selectedParameters: selectionResult?.selectedParameters || {},
                     totalSelected: selectionResult?.totalSelected || 0,
-                    availableParameters: advancedParameters.uniqueParameters
+                    availableParameters: availableParams
                   },
-                  trimmedInput,
-                  undefined,
-                  searchSessionId
+                  searchSessionId,
+                  "workflow"
                 );
                 await streamAssistantMessage(agentResponse.content);
 
                 if (agentResponse.nextStep === "showSummary") {
                   setCurrentStep("showSummary");
-                  // If backend returned no assistant content (empty string), it already indicated to proceed
-                  const introAlreadyStreamed = !agentResponse.content || agentResponse.content.trim().length === 0;
+                  // If backend returned assistant content that we've streamed, set introAlreadyStreamed to true
+                  const introAlreadyStreamed = !!agentResponse.content && agentResponse.content.trim().length > 0;
                   await handleShowSummaryAndProceed({ introAlreadyStreamed });
                 } else if (agentResponse.nextStep) {
                   setCurrentStep(agentResponse.nextStep as any);
                 }
               } else {
                 // No parameters discovered yet, always ask backend what to do next
-                agentResponse = await generateAgentResponse(
+                agentResponse = await callAgenticSalesAgent(
                   "awaitAdvancedSpecs",
-                  { productType: state.productType },
                   trimmedInput,
-                  undefined,
-                  searchSessionId
+                  { productType: state.productType },
+                  searchSessionId,
+                  "workflow"
                 );
                 await streamAssistantMessage(agentResponse.content);
 
                 if (agentResponse.nextStep === "showSummary") {
                   setCurrentStep("showSummary");
-                  const introAlreadyStreamed = !agentResponse.content || agentResponse.content.trim().length === 0;
+                  // If backend returned assistant content that we've streamed, set introAlreadyStreamed to true
+                  const introAlreadyStreamed = !!agentResponse.content && agentResponse.content.trim().length > 0;
                   await handleShowSummaryAndProceed({ introAlreadyStreamed });
                   setState((prev) => ({ ...prev, isLoading: false }));
                   return;
@@ -950,7 +1696,7 @@ const AIRecommender = ({
               }
             } catch (error) {
               console.error("Advanced parameters error:", error);
-              agentResponse = await generateAgentResponse("awaitAdvancedSpecs", {}, "Error processing advanced parameters.", undefined, searchSessionId);
+              agentResponse = await callAgenticSalesAgent("awaitAdvancedSpecs", "Error processing advanced parameters.", {}, searchSessionId, "workflow");
               await streamAssistantMessage(agentResponse.content);
             }
             setState((prev) => ({ ...prev, isLoading: false }));
@@ -959,9 +1705,43 @@ const AIRecommender = ({
 
           case "showSummary": {
             // User is confirming to proceed with analysis after seeing summary
-            const normalizedInput = trimmedInput.toLowerCase().replace(/\s/g, "");
-            if (["yes", "proceed", "continue", "run", "analyze", "ok"].some(cmd => normalizedInput.includes(cmd))) {
-              await performAnalysis();
+            console.log(`[${searchSessionId}] [SHOW_SUMMARY] User input: ${trimmedInput}`);
+            try {
+              // Call backend to handle the response
+              const summaryResponse = await callAgenticSalesAgent(
+                "showSummary",
+                trimmedInput,
+                {
+                  productType: state.productType,
+                  collectedData: collectedData,
+                  schema: state.requirementSchema
+                },
+                searchSessionId,
+                "workflow"
+              );
+
+              // Display the response
+              await streamAssistantMessage(summaryResponse.content);
+
+              // Check if backend says to trigger analysis
+              if (summaryResponse.triggerAnalysis || summaryResponse.nextStep === "finalAnalysis") {
+                console.log(`[${searchSessionId}] [SHOW_SUMMARY] Triggering final analysis`);
+                setCurrentStep("finalAnalysis");
+                await performAnalysis();
+              } else if (summaryResponse.nextStep) {
+                setCurrentStep(summaryResponse.nextStep as any);
+              }
+            } catch (error) {
+              console.error(`[${searchSessionId}] [SHOW_SUMMARY] Error:`, error);
+              // Fallback: Check if user confirmed with simple keywords
+              const normalizedInput = trimmedInput.toLowerCase().replace(/\s/g, "");
+              if (["yes", "proceed", "continue", "run", "analyze", "ok", "start"].some(cmd => normalizedInput.includes(cmd))) {
+                await streamAssistantMessage("Starting product analysis...");
+                setCurrentStep("finalAnalysis");
+                await performAnalysis();
+              } else {
+                await streamAssistantMessage("Would you like to proceed with the product analysis? Type 'yes' or 'proceed' to continue.");
+              }
             }
             break;
           }
@@ -980,7 +1760,7 @@ const AIRecommender = ({
             if (["rerun", "run", "runagain"].includes(normalizedInput)) {
               await performAnalysis();
             } else {
-              agentResponse = await generateAgentResponse("analysisError", {}, "Please type 'rerun' to try again.", undefined, searchSessionId);
+              agentResponse = await callAgenticSalesAgent("analysisError", "Please type 'rerun' to try again.", {}, searchSessionId, "workflow");
               await streamAssistantMessage(agentResponse.content);
             }
             break;
@@ -997,12 +1777,12 @@ const AIRecommender = ({
 
                 if (shortConfirm) {
                   // Let backend and LLM know user chose to skip providing missing mandatory info
-                  const confirmationResponse = await generateAgentResponse(
+                  const confirmationResponse = await callAgenticSalesAgent(
                     "confirmAfterMissingInfo",
-                    { productType: state.productType, collectedData },
                     "User confirmed to proceed without providing missing mandatory fields.",
-                    undefined,
-                    searchSessionId
+                    { productType: state.productType, collectedData },
+                    searchSessionId,
+                    "workflow"
                   );
                   await streamAssistantMessage(confirmationResponse.content);
                   // Move to additional and latest specs step
@@ -1016,62 +1796,87 @@ const AIRecommender = ({
                     .join(", ");
 
                   // Generate a response asking what they want to add
-                  const noResponse = await generateAgentResponse(
+                  const noResponse = await callAgenticSalesAgent(
                     "askForMissingFields",
+                    `User wants to provide missing fields: ${missingFieldsFormatted}`,
                     {
                       productType: state.productType,
                       missingFields: missingFieldsFormatted,
                       missingFieldsList: missingFields
                     },
-                    `User wants to provide missing fields: ${missingFieldsFormatted}`,
-                    undefined,
-                    searchSessionId
+                    searchSessionId,
+                    "workflow"
                   );
                   await streamAssistantMessage(noResponse.content);
                   // Stay at awaitMissingInfo step - loop until user says yes
                   setCurrentStep("awaitMissingInfo");
                 } else {
-                  // User provided additional data - run validation to check if missing fields are satisfied
+                  // User provided additional data - RE-VALIDATE using AGENTIC VALIDATION TOOL
+                  console.log(`[${searchSessionId}] [AGENTIC] Re-validating with updated fields`);
                   const combinedInput = `${composeUserDataString(collectedData)} ${trimmedInput}`;
-                  const newValidation: ValidationResult = await validateRequirements(combinedInput, state.validationResult?.productType, searchSessionId, currentStep);
-                  const newFlatRequirements = flattenRequirements(newValidation.providedRequirements);
+
+                  // STEP 1: Re-validate with agentic tool
+                  const revalidationResult = await callAgenticValidate(
+                    combinedInput,
+                    state.validationResult?.productType,
+                    searchSessionId,
+                    true // enable PPI
+                  );
+
+                  console.log(`[${searchSessionId}] [REVALIDATION] Valid: ${revalidationResult.isValid}`);
+                  console.log(`[${searchSessionId}] [REVALIDATION] Missing fields: ${revalidationResult.missingFields?.length || 0}`);
+
+                  // STEP 2: Generate AI response for re-validation
+                  const salesAgentResponse = await callAgenticSalesAgent(
+                    revalidationResult.isValid ? "awaitAdditionalAndLatestSpecs" : "awaitMissingInfo",
+                    trimmedInput,
+                    {
+                      product_type: revalidationResult.productType,
+                      schema: revalidationResult.schema,
+                      provided_requirements: revalidationResult.providedRequirements,
+                      missing_fields: revalidationResult.missingFields,
+                      is_valid: revalidationResult.isValid
+                    },
+                    searchSessionId,
+                    "workflow"
+                  );
+
+                  // Update state
+                  const newFlatRequirements = flattenRequirements(revalidationResult.providedRequirements);
                   const updatedData = mergeRequirementsWithSchema({ ...collectedData, ...newFlatRequirements }, state.requirementSchema!);
 
-                  // Update collected data with the new information
                   setCollectedData(updatedData);
-                  setState((prev) => ({ ...prev, validationResult: newValidation }));
-
-                  if (newValidation.validationAlert) {
-                    // Still missing some required info
-                    await streamAssistantMessage(newValidation.validationAlert.message);
-                    setCurrentStep("awaitMissingInfo");
-                  } else {
-                    // All required info is now provided - let LLM handle confirmation
-                    agentResponse = await generateAgentResponse(
-                      "confirmAfterMissingInfo",
-                      { productType: state.productType, collectedData: updatedData },
-                      "All mandatory requirements provided.",
-                      undefined,
-                      searchSessionId
-                    );
-                    await streamAssistantMessage(agentResponse.content);
-
-                    // Move to awaitAdditionalAndLatestSpecs step
-                    if (agentResponse.nextStep) {
-                      setCurrentStep(agentResponse.nextStep as any);
-                    } else {
-                      setCurrentStep("awaitAdditionalAndLatestSpecs");
+                  setState((prev) => ({
+                    ...prev,
+                    validationResult: {
+                      ...revalidationResult,
+                      validationAlert: revalidationResult.missingFields && revalidationResult.missingFields.length > 0 ? {
+                        message: salesAgentResponse.content,
+                        missingFields: revalidationResult.missingFields
+                      } : undefined
                     }
+                  }));
+
+                  // STEP 3: Display AI-generated response
+                  await streamAssistantMessage(salesAgentResponse.content);
+
+                  // STEP 4: Transition to next step
+                  if (revalidationResult.isValid) {
+                    // All required info is now provided
+                    setCurrentStep(salesAgentResponse.nextStep as any || "awaitAdditionalAndLatestSpecs");
+                  } else {
+                    // Still missing some required info
+                    setCurrentStep("awaitMissingInfo");
                   }
                 }
               } catch (error) {
                 console.error("Missing info processing error:", error);
-                agentResponse = await generateAgentResponse("default", {}, "Error processing your input.", undefined, searchSessionId);
+                agentResponse = await callAgenticSalesAgent("default", "Error processing your input.", {}, searchSessionId, "workflow");
                 await streamAssistantMessage(agentResponse.content);
               }
             } else {
               // Default conversation handling
-              agentResponse = await generateAgentResponse("default", {}, trimmedInput, undefined, searchSessionId);
+              agentResponse = await callAgenticSalesAgent("default", trimmedInput, {}, searchSessionId, "workflow");
               await streamAssistantMessage(agentResponse.content);
             }
           }
@@ -1085,7 +1890,7 @@ const AIRecommender = ({
         setState((prev) => ({ ...prev, isLoading: false }));
       }
     },
-    [currentStep, collectedData, state.productType, state.validationResult, state.requirementSchema, addMessage, performAnalysis, handleShowSummaryAndProceed, streamAssistantMessage]
+    [currentStep, collectedData, state.productType, state.validationResult, state.requirementSchema, addMessage, performAnalysis, handleShowSummaryAndProceed, streamAssistantMessage, searchSessionId, productSearchWorkflow]
   );
 
   const setInputValue = useCallback((value: string) => {
@@ -1121,12 +1926,29 @@ const AIRecommender = ({
         // Avoid overwriting the restored empty input for previously-run conversations
         console.log(`[${searchSessionId}] Skipping auto-fill from initialInput because saved messages exist`);
       } else {
-        // Only set the input value, don't auto-submit - let user decide when to submit
-        setState((prev) => ({ ...prev, inputValue: inputParam }));
-        setHasAutoSubmitted(true); // Mark as processed to avoid re-setting
+        console.log(`[${searchSessionId}] ====== INITIAL INPUT PROCESSING ======`);
+        console.log(`[${searchSessionId}] isDirectSearch: ${isDirectSearch}`);
+        console.log(`[${searchSessionId}] inputParam: ${inputParam?.substring(0, 100)}...`);
+
+        if (isDirectSearch && inputParam) {
+          // DIRECT SEARCH: Auto-trigger product search workflow immediately
+          console.log(`[${searchSessionId}] ⚡ DIRECT SEARCH MODE - Auto-triggering handleRunProductSearch`);
+          setHasAutoSubmitted(true);
+          // Use setTimeout to ensure state is ready
+          setTimeout(() => {
+            console.log(`[${searchSessionId}] Executing handleRunProductSearch with sampleInput`);
+            handleRunProductSearch(inputParam);
+          }, 100);
+        } else {
+          // NORMAL MODE: Just set the input value, let user decide when to submit
+          console.log(`[${searchSessionId}] Normal mode - setting input value for user to submit`);
+          setState((prev) => ({ ...prev, inputValue: inputParam }));
+          setHasAutoSubmitted(true);
+        }
       }
     }
-  }, [searchParams, hasAutoSubmitted, initialInput, savedMessages, searchSessionId]);
+  }, [searchParams, hasAutoSubmitted, initialInput, savedMessages, searchSessionId, isDirectSearch, handleRunProductSearch]);
+
 
   return (
 
@@ -1242,6 +2064,8 @@ const AIRecommender = ({
             isDocked={isRightDocked}
             setIsDocked={setIsRightDocked}
             onPricingDataUpdate={handlePricingDataUpdate}
+            identifiedItems={state.identifiedItems}
+            onRunSearch={handleRunProductSearch}
           />
         </div>
       </div>

@@ -3,15 +3,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AnalysisResult, RequirementSchema, ValidationResult, AnalysisImageResult, ProductImage, VendorLogo } from "./types";
+import { AnalysisResult, RequirementSchema, ValidationResult, AnalysisImageResult, ProductImage, VendorLogo, IdentifiedItem } from "./types";
 import { getProductPriceReview, submitFeedback as submitFeedbackApi, BASE_URL } from "./api";
-import { Trophy, Loader2, ChevronLeft, ChevronRight, Eye, Send } from "lucide-react";
+import { Trophy, Loader2, ChevronLeft, ChevronRight, Eye, Send, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
 import "./ImageComponents.css";
 
+// Helper functions
 const cleanImageUrl = (url: string): string => {
   if (!url) return "";
   // Check and remove the non-standard x-raw-image:/// scheme
@@ -101,6 +102,8 @@ export type RightPanelProps = {
   analysisResult: AnalysisResult;
   validationResult?: ValidationResult;
   requirementSchema?: RequirementSchema;
+  identifiedItems?: IdentifiedItem[] | null; // Added
+  onRunSearch?: (sampleInput: string) => void; // Added
   isDocked: boolean;
   setIsDocked: React.Dispatch<React.SetStateAction<boolean>>;
   onPricingDataUpdate?: (priceReviewMap: Record<string, PriceReview>) => void;
@@ -123,6 +126,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
   analysisResult,
   validationResult,
   requirementSchema,
+  identifiedItems,
+  onRunSearch,
   isDocked,
   setIsDocked,
   onPricingDataUpdate
@@ -142,6 +147,14 @@ const RightPanel: React.FC<RightPanelProps> = ({
       onPricingDataUpdate(priceReviewMap);
     }
   }, [priceReviewMap, onPricingDataUpdate]);
+
+  // Auto-undock when identified items are available
+  useEffect(() => {
+    if (identifiedItems && identifiedItems.length > 0 && isDocked && !hasAutoUndocked.current) {
+      setIsDocked(false);
+      hasAutoUndocked.current = true;
+    }
+  }, [identifiedItems, isDocked, setIsDocked]);
 
   type FeedbackType = "positive" | "negative" | null;
   interface FeedbackEntry {
@@ -377,7 +390,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
   // Thresholds for match quality
   // Exact matches: No score threshold - show ALL products where requirementsMatch === true
   // Approximate matches: Minimum score of 50% to ensure reasonable quality
-  const APPROXIMATE_THRESHOLD = 50;
+  const APPROXIMATE_THRESHOLD = 0; // TEMP: Set to 0 for debugging (was 50)
 
   const requirementsMatchMap = useMemo(() => {
     const map = new Map<string, boolean>();
@@ -411,6 +424,19 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
     // Fallback logic: show exact if available, otherwise approximate
     const mode = exact.length > 0 ? 'exact' : 'approximate';
+
+    console.log('[RightPanel] Debug:', {
+      totalProducts: analysisResult.overallRanking.rankedProducts.length,
+      exactMatchesCount: exact.length,
+      approximateMatchesCount: approximate.length,
+      displayMode: mode,
+      sampleProduct: analysisResult.overallRanking.rankedProducts[0],
+      allProductScores: analysisResult.overallRanking.rankedProducts.map(p => ({
+        name: p.productName,
+        score: p.overallScore,
+        requirementsMatch: p.requirementsMatch
+      }))
+    });
 
     return { exactMatches: exact, approximateMatches: approximate, displayMode: mode };
   }, [analysisResult, requirementsMatchMap]);
@@ -449,8 +475,27 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
   const finalAnalysisResult = filteredAnalysisResult;
 
-  // If no matches, render minimal docked panel
-  if (!finalAnalysisResult?.vendorAnalysis?.vendorMatches?.length) {
+  // Determine what to render
+  const hasAnalysisData = !!(
+    finalAnalysisResult?.vendorAnalysis?.vendorMatches?.length ||
+    finalAnalysisResult?.overallRanking?.rankedProducts?.length
+  );
+  const showIdentifiedItems = !hasAnalysisData && identifiedItems && identifiedItems.length > 0;
+  // Reuse hasAnalysisData for showAnalysis
+  const showAnalysis = hasAnalysisData;
+
+  // DEBUG: Log render decisions
+  console.log('[RightPanel] Render decision:', {
+    hasAnalysisData,
+    showAnalysis,
+    showIdentifiedItems,
+    vendorMatchesCount: finalAnalysisResult?.vendorAnalysis?.vendorMatches?.length || 0,
+    rankedProductsCount: finalAnalysisResult?.overallRanking?.rankedProducts?.length || 0,
+    productsToDisplayCount: productsToDisplay.length
+  });
+
+  // If no matches and no identified items, render minimal docked panel
+  if (!showAnalysis && !showIdentifiedItems) {
     return (
       <div className="w-full h-full flex flex-col glass-sidebar text-foreground border-l border-border overflow-hidden sticky top-0 right-0 z-20" style={{ minWidth: 0 }}>
         {/* Header space - dock button moved to corner */}
@@ -469,6 +514,75 @@ const RightPanel: React.FC<RightPanelProps> = ({
         `}</style>
       </div>
     );
+  }
+
+  // Helper for Identified Items rendering
+  if (showIdentifiedItems && !isDocked) {
+    return (
+      <div className="w-full h-full flex flex-col glass-sidebar text-foreground border-l border-border sticky top-0 right-0 z-20" style={{ minWidth: 0 }}>
+        {/* Header */}
+        <div className="flex items-center justify-between py-4 px-6 border-b border-border/50 bg-muted/20">
+          <div className="flex items-center gap-2">
+            <Trophy className="w-5 h-5 text-primary" />
+            <h2 className="font-semibold text-lg">Identified Items</h2>
+          </div>
+          {/* Dock button is external/managed by parent or top-right overlay */}
+        </div>
+
+        <ScrollArea className="flex-1 p-4">
+          <div className="space-y-4 max-w-3xl mx-auto pt-2">
+            {identifiedItems!.map((item) => (
+              <Card key={item.number} className="overflow-hidden border-border/50 shadow-sm hover:shadow-md transition-all">
+                <CardContent className="p-0 flex flex-col md:flex-row gap-4">
+                  {/* Image Section */}
+                  <div className="w-full md:w-48 h-48 bg-muted/30 flex-shrink-0 relative group">
+                    {item.imageUrl ? (
+                      <img src={getAbsoluteImageUrl(item.imageUrl)} alt={item.name} className="w-full h-full object-contain p-2" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                        <Trophy className="w-12 h-12 opacity-20" />
+                      </div>
+                    )}
+                    <div className="absolute top-2 left-2 bg-background/90 backdrop-blur px-2 py-1 rounded text-xs font-mono font-medium border shadow-sm">
+                      #{item.number}
+                    </div>
+                    <div className="absolute top-2 right-2 bg-primary/10 text-primary-foreground px-2 py-1 rounded text-xs font-medium border border-primary/20 shadow-sm">
+                      {item.type}
+                    </div>
+                  </div>
+
+                  {/* Content Section */}
+                  <div className="flex-1 p-4 flex flex-col">
+                    <div className="flex-1">
+                      <h3 className="text-xl font-bold mb-1 text-primary">{item.name}</h3>
+                      <div className="text-sm text-muted-foreground mb-3 font-medium bg-muted/30 inline-block px-2 py-1 rounded">
+                        {item.category}
+                      </div>
+
+                      {item.keySpecs && (
+                        <div className="mt-2 text-sm text-foreground/80 leading-relaxed">
+                          <strong>Specs:</strong> {item.keySpecs}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="mt-4 flex items-center justify-end gap-3">
+                      <Button
+                        onClick={() => onRunSearch && item.sampleInput && onRunSearch(item.sampleInput)}
+                        className="gap-2 shadow-lg hover:shadow-xl transition-all hover:scale-105 active:scale-95 font-semibold"
+                      >
+                        <Play className="w-4 h-4 fill-current" />
+                        Run Product Search
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </ScrollArea>
+      </div>
+    )
   }
 
   const getRankIcon = (rank: number | undefined) => {

@@ -20,6 +20,8 @@ export interface ValidationResult {
   detectedSchema?: Record<string, any>;
   providedRequirements: Record<string, any>;
   productType: string;
+  missingFields?: string[];            // Fields that are missing from user input
+  originalInput?: string;              // The original user input text
 }
 export interface StructuredRequirements {
   [requirement: string]: string | number | boolean | null;
@@ -41,6 +43,9 @@ export interface ProductMatch {
 
 export interface VendorAnalysis {
   vendorMatches: ProductMatch[];
+  vendorsAnalyzed?: number;
+  totalMatches?: number;
+  vendorRunDetails?: any[];
 }
 
 // ADD imageUrl HERE:
@@ -68,6 +73,10 @@ export interface AnalysisResult {
     markdownAnalysis: any;
     rankedProducts: RankedProduct[];
   };
+  topRecommendation?: RankedProduct;   // Top recommended product
+  totalMatches?: number;               // Total number of matching products
+  exactMatchCount?: number;            // Count of exact matches
+  approximateMatchCount?: number;      // Count of approximate matches
 }
 
 export interface RequirementSchema {
@@ -79,11 +88,24 @@ export interface RequirementSchema {
   optionalRequirements?: Record<string, any>; // camelCase keys as per backend
 }
 
+
+export interface IdentifiedItem {
+  number: number;
+  type: "instrument" | "accessory";
+  name: string;
+  category: string;
+  quantity?: number;
+  keySpecs?: string;
+  imageUrl?: string;
+  sampleInput?: string;
+}
+
 export interface AppState {
   messages: ChatMessage[];
   currentProductType: string | null;
   validationResult: ValidationResult | null;
   analysisResult: AnalysisResult | null;
+  identifiedItems: IdentifiedItem[] | null; // Added for Instrument Identifier results
   requirementSchema: RequirementSchema | null;
   isLoading: boolean;
   inputValue: string;
@@ -100,10 +122,12 @@ export interface UserCredentials {
 
 // New types for step-based workflow
 export interface IntentClassificationResult {
-  intent: "greeting" | "knowledgeQuestion" | "productRequirements" | "workflow" | "chitchat" | "other";
-  nextStep: "greeting" | "initialInput" | "awaitAdditionalAndLatestSpecs" | "awaitAdvancedSpecs" | "showSummary" | "finalAnalysis" | null;
+  intent: "greeting" | "knowledgeQuestion" | "productRequirements" | "solution" | "workflow" | "chitchat" | "chat" | "other";
+  nextStep: "greeting" | "initialInput" | "solutionWorkflow" | "awaitAdditionalAndLatestSpecs" | "awaitAdvancedSpecs" | "showSummary" | "finalAnalysis" | null;
   resumeWorkflow?: boolean;
+  isSolution?: boolean;  // True if the input is a complex engineering challenge
 }
+
 
 export interface AgentResponse {
   content: string;
@@ -140,8 +164,10 @@ export interface AdvancedParametersResult {
   productType: string;
   vendorParameters: VendorParametersResult[];
   uniqueParameters: string[];
+  uniqueSpecifications?: Array<{ key: string; name: string; }>;  // Newer format
   totalVendorsSearched: number;
   totalUniqueParameters: number;
+  totalUniqueSpecifications?: number;
   fallback?: boolean;
 }
 
@@ -171,8 +197,8 @@ export interface IdentifiedAccessory {
 
 export interface InstrumentIdentificationResult {
   // Response type indicator
-  response_type?: 'greeting' | 'question' | 'requirements' | 'error';
-  responseType?: 'greeting' | 'question' | 'requirements' | 'error';
+  response_type?: 'greeting' | 'question' | 'requirements' | 'modification' | 'error';
+  responseType?: 'greeting' | 'question' | 'requirements' | 'modification' | 'error';
 
   // For greeting and question responses
   message?: string;
@@ -182,11 +208,18 @@ export interface InstrumentIdentificationResult {
   projectName?: string;
   instruments: IdentifiedInstrument[];
   accessories?: IdentifiedAccessory[];
-  summary: string;
+  summary?: string;  // Made optional for agentic workflow
 
   // For error responses
   error?: string;
+
+  // Agentic workflow specific fields
+  awaitingSelection?: boolean;  // True when waiting for user to select items
+  items?: any[];  // Raw items array from agentic workflow
+  threadId?: string;  // Workflow thread ID for tracking
+  changesMade?: string[];  // List of changes made during modification
 }
+
 
 // New interfaces for image API integration
 export interface ProductImage {
@@ -225,3 +258,57 @@ export interface AnalysisImageResult {
     sourcesUsed: string[];
   };
 }
+
+// ==================== AGENTIC WORKFLOW TYPES ====================
+
+/**
+ * Agentic checkpoint state
+ * Tracks the current state of the agentic product search workflow
+ */
+export interface AgenticCheckpointState {
+  currentStep: string;                  // Current sales-agent checkpoint
+  awaitingUserInput: boolean;           // Is workflow paused for user input?
+  threadId: string | null;              // Thread ID for resuming conversation
+  productType: string | null;           // Detected product type
+  availableAdvancedParams: any[];       // Discovered advanced parameters
+  isKnowledgeQuestion: boolean;         // Is user asking a question?
+  hasError: boolean;                    // Is there an error?
+  errorMessage: string | null;          // Error message if any
+  retryCount: number;                   // Number of retry attempts
+}
+
+/**
+ * Agentic conversation message
+ * Extends ChatMessage with agentic-specific metadata
+ */
+export interface AgenticChatMessage extends ChatMessage {
+  checkpoint?: string;                  // Which checkpoint generated this message
+  isInterrupt?: boolean;                // Is this an interrupt response?
+  requiresAction?: boolean;             // Does this message need user action?
+  agenticMetadata?: {
+    threadId?: string;
+    productType?: string;
+    advancedParams?: any[];
+    currentStep?: string;
+  };
+}
+
+/**
+ * Workflow type discriminator
+ */
+export type WorkflowType = "flask" | "agentic";
+
+/**
+ * Agentic checkpoint names
+ */
+export type AgenticCheckpoint =
+  | "greeting"
+  | "initialInput"
+  | "awaitMissingInfo"
+  | "awaitAdditionalAndLatestSpecs"
+  | "awaitAdvancedSpecs"
+  | "showSummary"
+  | "finalAnalysis"
+  | "analysisError"
+  | "knowledgeQuestion"
+  | "default";

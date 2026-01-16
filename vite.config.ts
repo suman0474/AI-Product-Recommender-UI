@@ -8,7 +8,7 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080,
     proxy: {
-      '/api': {
+      '^/(api|validate|analyze|schema|login|register|logout|user|new-search|additional_requirements|structure_requirements|upload|search_pdfs|get-price-review|feedback|get_field_description|get_all_field_descriptions|vendors|submodel-mapping|admin|standardization)': {
         target: 'http://localhost:5000',
         changeOrigin: true,
         secure: false,

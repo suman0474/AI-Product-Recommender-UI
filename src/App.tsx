@@ -10,6 +10,7 @@ import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import AdminDashboard from "./pages/AdminDashboard";  // Import your admin dashboard
 import Project from "./pages/Project";
+import ProductInfo from "./pages/ProductInfo";  // Product Info page
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import React from "react";
 import Uploading from "./pages/Uploading";
@@ -60,6 +61,16 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <Project />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Protected Product Info route */}
+            <Route
+              path="/product-info"
+              element={
+                <ProtectedRoute>
+                  <ProductInfo />
                 </ProtectedRoute>
               }
             />

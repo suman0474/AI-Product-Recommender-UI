@@ -14,7 +14,7 @@ import {
   AnalysisImageResult,
 } from "./types";
 
-export const BASE_URL = "https://zestful-solace-production-ea2e.up.railway.app";
+export const BASE_URL = "";
 axios.defaults.baseURL = BASE_URL;
 axios.defaults.withCredentials = true;
 
@@ -236,23 +236,33 @@ export const validateRequirements = async (
 
     const payload: any = {
       user_input: normalizedInput,
+      requirements: normalizedInput, // ✅ Include requirements for modern endpoint
       is_repeat: isRepeat, // ✅ tell backend if this is a repeat validation
       reset: false, // By default do not reset session state on validation
     };
 
     if (productType) {
       payload.product_type = productType; // 🚀 Only include if detected
+      payload.productType = productType; // Handle both cases
     }
 
     if (searchSessionId) {
       payload.search_session_id = searchSessionId; // 🚀 Include search session ID for independent searches
+      payload.sessionId = searchSessionId; // Handle both cases
     }
 
     const response = await axios.post(`/validate`, payload);
 
     validationTracker.set(sessionId, true); // ✅ mark that this session has validated at least once
 
-    return convertKeysToCamelCase(response.data) as ValidationResult;
+    const data = convertKeysToCamelCase(response.data);
+
+    // ✅ Handle new endpoint structure which nests result in 'validation'
+    if (data.validation) {
+      return data.validation as ValidationResult;
+    }
+
+    return data as ValidationResult;
   } catch (error: any) {
     console.error("Validation error:", error.response?.data || error.message);
     throw new Error(error.response?.data?.error || "Validation failed");
@@ -263,6 +273,7 @@ export const validateRequirements = async (
 
 /**
  * Analyzes products based on user input.
+ * @deprecated Use runFinalProductAnalysis for new product search workflow
  */
 export const analyzeProducts = async (
   userInput: string
@@ -276,6 +287,96 @@ export const analyzeProducts = async (
   } catch (error: any) {
     console.error("Analysis error:", error.response?.data || error.message);
     throw new Error(error.response?.data?.error || "Analysis failed");
+  }
+};
+
+/**
+ * Run final product analysis (Steps 4-5: Vendor Analysis + Ranking)
+ *
+ * This calls the workflow.run_analysis_only() method after requirements are collected.
+ * It performs vendor matching and product ranking.
+ *
+ * @param structuredRequirements Complete requirements object with mandatory, optional, and advanced params
+ * @param productType Product type detected from validation
+ * @param schema Product schema (optional)
+ * @param sessionId Session tracking ID (optional)
+ * @returns Analysis result with vendor matches and ranked products
+ */
+export const runFinalProductAnalysis = async (
+  structuredRequirements: {
+    productType?: string;
+    mandatoryRequirements?: Record<string, any>;
+    optionalRequirements?: Record<string, any>;
+    selectedAdvancedParams?: Record<string, any>;
+  },
+  productType: string,
+  schema?: any,
+  sessionId?: string
+): Promise<AnalysisResult> => {
+  try {
+    console.log('[RUN_ANALYSIS] Calling /api/agentic/run-analysis', {
+      productType,
+      hasStructuredReqs: !!structuredRequirements,
+      sessionId
+    });
+
+    const response = await axios.post(`/api/agentic/run-analysis`, {
+      structured_requirements: structuredRequirements,
+      product_type: productType,
+      schema: schema,
+      session_id: sessionId
+    });
+
+    if (!response.data.success) {
+      throw new Error(response.data.error || 'Analysis failed');
+    }
+
+    const analysisData = response.data.data;
+
+    // CRITICAL: Validate analysisData before proceeding
+    if (!analysisData) {
+      console.error('[RUN_ANALYSIS] Backend returned empty data object');
+      throw new Error('Backend returned empty analysis data');
+    }
+
+    console.log('[RUN_ANALYSIS] Analysis complete', {
+      totalRanked: analysisData.totalRanked,
+      exactMatches: analysisData.exactMatchCount,
+      approximateMatches: analysisData.approximateMatchCount
+    });
+
+    // DEBUG: Log full structure to identify field naming issues
+    console.log('[RUN_ANALYSIS] DEBUG: Raw analysisData keys:', Object.keys(analysisData));
+    console.log('[RUN_ANALYSIS] DEBUG: overallRanking keys:', Object.keys(analysisData.overallRanking || {}));
+    if (analysisData.overallRanking?.rankedProducts?.length > 0) {
+      console.log('[RUN_ANALYSIS] DEBUG: First rankedProduct:', analysisData.overallRanking.rankedProducts[0]);
+      console.log('[RUN_ANALYSIS] DEBUG: First product fields:', Object.keys(analysisData.overallRanking.rankedProducts[0]));
+    } else {
+      console.warn('[RUN_ANALYSIS] WARNING: No ranked products in response!');
+    }
+
+    // Transform to expected AnalysisResult format
+    const result: AnalysisResult = {
+      productType: productType,
+      vendorAnalysis: analysisData.vendorAnalysis || {
+        vendorMatches: [],
+        vendorRunDetails: [],
+        totalMatches: 0,
+        vendorsAnalyzed: 0
+      },
+      overallRanking: analysisData.overallRanking || {
+        rankedProducts: []
+      },
+      topRecommendation: analysisData.topRecommendation,
+      totalMatches: analysisData.totalRanked || 0,
+      exactMatchCount: analysisData.exactMatchCount || 0,
+      approximateMatchCount: analysisData.approximateMatchCount || 0
+    };
+
+    return result;
+  } catch (error: any) {
+    console.error("[RUN_ANALYSIS] Error:", error.response?.data || error.message);
+    throw new Error(error.response?.data?.error || "Final analysis failed");
   }
 };
 
@@ -337,7 +438,7 @@ export const structureRequirements = async (fullInput: string): Promise<any> => 
 };
 
 /**
- * Discovers advanced parameters from top vendors for a product type
+ * Discovers advanced parameters from top vendors for a product type (Flask endpoint)
  */
 export const discoverAdvancedParameters = async (productType: string, searchSessionId?: string): Promise<any> => {
   try {
@@ -354,6 +455,184 @@ export const discoverAdvancedParameters = async (productType: string, searchSess
   } catch (error: any) {
     console.error("Advanced parameters discovery error:", error.response?.data || error.message);
     throw new Error(error.response?.data?.error || "Failed to discover advanced parameters");
+  }
+};
+
+// ==================== AGENTIC TOOL WRAPPER APIS ====================
+
+/**
+ * Call Agentic Validation Tool Wrapper
+ *
+ * Standalone validation endpoint that detects product type, loads/generates schema
+ * (with PPI workflow if needed), and validates user requirements.
+ *
+ * @param userInput User's requirements description
+ * @param productType Optional: Expected product type hint
+ * @param sessionId Optional: Session tracking ID
+ * @param enablePpi Optional: Enable PPI workflow (default: true)
+ * @returns Validation result with product type, schema, requirements, etc.
+ */
+export const callAgenticValidate = async (
+  userInput: string,
+  productType?: string,
+  sessionId?: string,
+  enablePpi: boolean = true
+): Promise<any> => {
+  try {
+    const payload: any = {
+      user_input: userInput,
+      enable_ppi: enablePpi
+    };
+
+    if (productType) {
+      payload.product_type = productType;
+    }
+
+    if (sessionId) {
+      payload.session_id = sessionId;
+    }
+
+    console.log('[AGENTIC_VALIDATE] Starting validation:', {
+      inputPreview: userInput.substring(0, 50),
+      productType,
+      sessionId,
+      enablePpi
+    });
+
+    const response = await axios.post('/api/agentic/validate', payload);
+
+    if (!response.data.success) {
+      throw new Error(response.data.error || "Validation failed");
+    }
+
+    const result = convertKeysToCamelCase(response.data.data);
+
+    console.log('[AGENTIC_VALIDATE] Validation complete:', {
+      productType: result.productType,
+      isValid: result.isValid,
+      ppiUsed: result.ppiWorkflowUsed,
+      missingFields: result.missingFields
+    });
+
+    return result;
+  } catch (error: any) {
+    console.error("[AGENTIC_VALIDATE] Error:", error.response?.data || error.message);
+    throw new Error(error.response?.data?.error || "Validation failed");
+  }
+};
+
+/**
+ * Call Agentic Advanced Parameters Tool Wrapper
+ *
+ * Standalone advanced parameters discovery endpoint that discovers latest
+ * advanced specifications with series numbers from top vendors.
+ *
+ * @param productType Product type to discover parameters for (required)
+ * @param sessionId Optional: Session tracking ID
+ * @returns Advanced parameters result with unique specifications
+ */
+export const callAgenticAdvancedParameters = async (
+  productType: string,
+  sessionId?: string
+): Promise<any> => {
+  try {
+    if (!productType || !productType.trim()) {
+      throw new Error("product_type is required");
+    }
+
+    const payload: any = {
+      product_type: productType.trim()
+    };
+
+    if (sessionId) {
+      payload.session_id = sessionId;
+    }
+
+    console.log('[AGENTIC_ADVANCED_PARAMS] Discovering for:', productType);
+
+    const response = await axios.post('/api/agentic/advanced-parameters', payload);
+
+    if (!response.data.success) {
+      throw new Error(response.data.error || "Advanced parameters discovery failed");
+    }
+
+    const result = convertKeysToCamelCase(response.data.data);
+
+    console.log('[AGENTIC_ADVANCED_PARAMS] Discovery complete:', {
+      productType: result.productType,
+      totalUnique: result.totalUniqueSpecifications,
+      existingFiltered: result.existingSpecificationsFiltered,
+      specificationsFound: result.uniqueSpecifications?.length || 0
+    });
+
+    return result;
+  } catch (error: any) {
+    console.error("[AGENTIC_ADVANCED_PARAMS] Error:", error.response?.data || error.message);
+    throw new Error(error.response?.data?.error || "Advanced parameters discovery failed");
+  }
+};
+
+/**
+ * Call Agentic Sales Agent Tool Wrapper
+ *
+ * Generates conversational AI responses for all workflow tools (validation, advanced parameters, etc.)
+ * This is the universal response generator that creates user-facing messages.
+ *
+ * @param step Current workflow step (e.g., "initialInput", "awaitMissingInfo", "awaitAdditionalAndLatestSpecs")
+ * @param userMessage User's message or input
+ * @param dataContext Context data including product type, schema, requirements, etc.
+ * @param sessionId Optional: Session tracking ID
+ * @param intent Optional: Intent type ("workflow" or "knowledgeQuestion")
+ * @param saveImmediately Optional: Whether to save state immediately
+ * @returns Sales agent response with content, nextStep, and discoveredParameters
+ */
+export const callAgenticSalesAgent = async (
+  step: string,
+  userMessage: string,
+  dataContext: any,
+  sessionId?: string,
+  intent: string = "workflow",
+  saveImmediately: boolean = false
+): Promise<any> => {
+  try {
+    const payload: any = {
+      step: step,
+      user_message: userMessage,
+      data_context: dataContext,
+      intent: intent,
+      save_immediately: saveImmediately
+    };
+
+    if (sessionId) {
+      payload.session_id = sessionId;
+    }
+
+    console.log('[AGENTIC_SALES_AGENT] Generating response:', {
+      step,
+      intent,
+      sessionId,
+      productType: dataContext?.product_type || dataContext?.productType,
+      hasSchema: !!(dataContext?.schema)
+    });
+
+    const response = await axios.post('/api/agentic/sales-agent', payload);
+
+    if (!response.data.success) {
+      throw new Error(response.data.error || "Sales agent response generation failed");
+    }
+
+    const result = convertKeysToCamelCase(response.data.data);
+
+    console.log('[AGENTIC_SALES_AGENT] Response generated:', {
+      nextStep: result.nextStep,
+      hasDiscoveredParams: !!(result.discoveredParameters && result.discoveredParameters.length > 0),
+      contentPreview: result.content?.substring(0, 100)
+    });
+
+    return result;
+  } catch (error: any) {
+    console.error("[AGENTIC_SALES_AGENT] Error:", error.response?.data || error.message);
+    throw new Error(error.response?.data?.error || "Failed to generate sales agent response");
   }
 };
 
@@ -391,6 +670,49 @@ export const getFieldDescription = async (
   } catch (error: any) {
     console.error("Field description fetch error:", error.response?.data || error.message);
     throw new Error(error.response?.data?.error || "Failed to fetch field description.");
+  }
+};
+
+/**
+ * Fetches ALL field descriptions and values in a single batch request.
+ * This is much faster than calling getFieldDescription for each field individually.
+ * 
+ * @param fields Array of field paths (e.g., ["Performance.accuracy", "Electrical.outputSignal"])
+ * @param productType Product type for context-specific values
+ * @returns Map of field paths to their values
+ */
+export const getAllFieldDescriptions = async (
+  fields: string[],
+  productType: string | null
+): Promise<Record<string, string>> => {
+  try {
+    if (!fields.length) return {};
+
+    console.log(`[BATCH_FIELDS] Fetching ${fields.length} field values for ${productType}`);
+
+    const response = await axios.post(`/get_all_field_descriptions`, {
+      fields,
+      product_type: productType
+    });
+
+    const result = convertKeysToCamelCase(response.data);
+
+    // Convert the response to a simple field -> value map
+    const fieldMap: Record<string, string> = {};
+    const fieldValues = result.fieldValues || {};
+
+    for (const [fieldPath, data] of Object.entries(fieldValues)) {
+      const fieldData = data as any;
+      fieldMap[fieldPath] = fieldData?.value || "";
+    }
+
+    console.log(`[BATCH_FIELDS] Received ${result.fieldsPopulated}/${result.totalFields} values`);
+
+    return fieldMap;
+  } catch (error: any) {
+    console.error("Batch field description fetch error:", error.response?.data || error.message);
+    // Return empty map on error - don't throw, allow graceful degradation
+    return {};
   }
 };
 
@@ -630,56 +952,45 @@ export const submitFeedback = async (
 };
 
 // ====================================================================
-// === NEW: PRIMARY CONVERSATION API CALL ===
+// === PRIMARY CONVERSATION API CALL ===
 // ====================================================================
 
 /**
- * Sends the user's message to the central agent endpoint and gets a response.
- * This single function replaces the old validate, analyze, and sales-agent calls.
- * @param message The user's current message.
- * @param chatHistory The entire conversation history for context.
- * @returns A promise that resolves with the agent's string response.
- */
-export const postConversationTurn = async (
-  message: string,
-  chatHistory: ChatMessage[]
-): Promise<string> => {
-  try {
-    const response = await axios.post(`/api/conversation-turn`, {
-      message,
-      // Note: The backend uses the Flask session for secure state,
-      // but sending history can be useful for stateless backends or context.
-      history: chatHistory,
-    });
-    // The new backend endpoint returns a JSON object with a 'response' field.
-    return response.data.response;
-  } catch (error: any) {
-    console.error("Conversation turn error:", error.response?.data || error.message);
-    return "Sorry, I'm having trouble connecting right now. Please try again in a moment.";
-  }
-};
-
-/**
- * Identifies instruments from user requirements using LLM.
- * When currentInstruments and currentAccessories are provided, the backend will use
- * LLM-based classification to detect if the user wants to modify the existing list.
+ * Identifies instruments from user requirements using the AGENTIC workflow.
+ * 
+ * This function calls the agentic instrument-identifier endpoint which:
+ * 1. Classifies user intent
+ * 2. Identifies instruments and accessories
+ * 3. Aggregates RAG data (strategy, standards, inventory)
+ * 4. Generates sample_input for each item (for product search)
+ * 5. Returns items in awaiting_selection state for user to select
+ * 
+ * After user selects items, call callAgenticProductSearch() to trigger Product Search Workflow.
  * 
  * @param requirements User's requirements text
  * @param currentInstruments Optional - existing instruments list for modification detection
  * @param currentAccessories Optional - existing accessories list for modification detection
- * @returns A promise that resolves with identified instruments (or modification result)
+ * @param sessionId Optional - session ID for workflow tracking
+ * @returns A promise that resolves with identified instruments and sample_inputs
  */
+
 export const identifyInstruments = async (
   requirements: string,
   currentInstruments?: any[],
-  currentAccessories?: any[]
+  currentAccessories?: any[],
+  sessionId?: string
 ): Promise<InstrumentIdentificationResult> => {
   try {
     const payload: any = {
-      requirements,
+      message: requirements,  // Agentic API uses 'message' not 'requirements'
     };
 
-    // If existing data is provided, include it for LLM-based modification detection
+    // Include session ID if provided
+    if (sessionId) {
+      payload.session_id = sessionId;
+    }
+
+    // If existing data is provided, include it for modification detection
     if (currentInstruments && currentInstruments.length > 0) {
       payload.current_instruments = currentInstruments;
     }
@@ -687,13 +998,550 @@ export const identifyInstruments = async (
       payload.current_accessories = currentAccessories;
     }
 
-    const response = await axios.post(`/api/identify-instruments`, payload);
-    return convertKeysToCamelCase(response.data) as InstrumentIdentificationResult;
+    console.log('[AGENTIC] Calling /api/agentic/instrument-identifier');
+    const response = await axios.post(`/api/agentic/instrument-identifier`, payload);
+
+    // Agentic API returns { success, data, tags }
+    const responseData = response.data;
+
+    if (!responseData.success) {
+      throw new Error(responseData.error || "Agentic workflow failed");
+    }
+
+    // Extract the actual result from data.result or data directly
+    const result = responseData.data?.result || responseData.data || {};
+
+    console.log('[AGENTIC] Instrument identifier response:', {
+      success: responseData.success,
+      hasItems: !!(result.response_data?.items || result.instruments),
+      awaitingSelection: result.response_data?.awaiting_selection
+    });
+
+    // Convert the agentic response to match the expected format
+    // Agentic returns: { response, response_data: { items, awaiting_selection, ... } }
+    // Frontend expects: { instruments, accessories, responseType, message, projectName }
+
+    const agenticResponse = result.response_data || result;
+    const items = agenticResponse.items || [];
+
+    // Separate items into instruments and accessories
+    const instruments = items
+      .filter((item: any) => item.type === 'instrument')
+      .map((item: any) => ({
+        category: item.category || '',
+        productName: item.name || '',
+        quantity: item.quantity || 1,
+        specifications: item.specifications || {},
+        sampleInput: item.sample_input || item.sampleInput || '',
+      }));
+
+    const accessories = items
+      .filter((item: any) => item.type === 'accessory')
+      .map((item: any) => ({
+        category: item.category || '',
+        accessoryName: item.name || '',
+        quantity: item.quantity || 1,
+        specifications: item.specifications || {},
+        sampleInput: item.sample_input || item.sampleInput || '',
+      }));
+
+    // If no items from agentic format, try legacy format
+    const finalInstruments = instruments.length > 0 ? instruments :
+      (result.instruments || agenticResponse.instruments || []).map((inst: any) => convertKeysToCamelCase(inst));
+    const finalAccessories = accessories.length > 0 ? accessories :
+      (result.accessories || agenticResponse.accessories || []).map((acc: any) => convertKeysToCamelCase(acc));
+
+    return {
+      instruments: finalInstruments,
+      accessories: finalAccessories,
+      responseType: agenticResponse.response_type || 'requirements',
+      message: result.response || agenticResponse.response || '',
+      projectName: agenticResponse.project_name || 'Project',
+      // Include agentic-specific fields
+      awaitingSelection: agenticResponse.awaiting_selection || false,
+      items: items,
+      threadId: agenticResponse.thread_id,
+    } as InstrumentIdentificationResult;
+
   } catch (error: any) {
-    console.error("Instrument identification error:", error.response?.data || error.message);
+    console.error("[AGENTIC] Instrument identification error:", error.response?.data || error.message);
     throw new Error(error.response?.data?.error || "Failed to identify instruments");
   }
 };
+
+// ====================================================================
+// === SOLUTION WORKFLOW API CALL ===
+// ====================================================================
+
+/**
+ * Result interface for solution workflow
+ */
+export interface SolutionWorkflowResult {
+  success: boolean;
+  responseType: 'solution' | 'requirements' | 'greeting' | 'question' | 'error';
+  message?: string;
+  instruments: any[];
+  accessories: any[];
+  projectName?: string;
+  awaitingSelection?: boolean;
+  items?: any[];
+  solutionContext?: {
+    solutionName?: string;
+    industry?: string;
+    processType?: string;
+    keyParameters?: Record<string, string>;
+  };
+}
+
+/**
+ * Calls the Solution Workflow for complex engineering challenges.
+ * 
+ * This function is used for inputs that describe complete measurement/control systems
+ * requiring multiple instruments (e.g., reactor instrumentation, distillation column setup).
+ * 
+ * The solution workflow:
+ * 1. Analyzes the solution context (industry, process type, parameters)
+ * 2. Identifies all required instruments and accessories
+ * 3. Generates sample_input for each item for subsequent product search
+ * 
+ * @param requirements User's solution/challenge description
+ * @param sessionId Optional session ID for workflow tracking
+ * @returns A promise that resolves with the solution analysis and identified items
+ */
+export const callSolutionWorkflow = async (
+  requirements: string,
+  sessionId?: string
+): Promise<SolutionWorkflowResult> => {
+  try {
+    const payload: any = {
+      message: requirements,
+    };
+
+    if (sessionId) {
+      payload.session_id = sessionId;
+    }
+
+    console.log('[SOLUTION_WORKFLOW] Calling /api/agentic/solution');
+    const response = await axios.post(`/api/agentic/solution`, payload);
+
+    const responseData = response.data;
+
+    if (!responseData.success) {
+      throw new Error(responseData.error || "Solution workflow failed");
+    }
+
+    // Extract the result
+    const result = responseData.data?.result || responseData.data || {};
+    const agenticResponse = result.response_data || result;
+    const items = agenticResponse.items || [];
+
+    // Separate items into instruments and accessories
+    const instruments = items
+      .filter((item: any) => item.type === 'instrument')
+      .map((item: any) => ({
+        category: item.category || '',
+        productName: item.name || '',
+        quantity: item.quantity || 1,
+        specifications: item.specifications || {},
+        sampleInput: item.sample_input || item.sampleInput || '',
+        purpose: item.purpose || '',
+      }));
+
+    const accessories = items
+      .filter((item: any) => item.type === 'accessory')
+      .map((item: any) => ({
+        category: item.category || '',
+        accessoryName: item.name || '',
+        quantity: item.quantity || 1,
+        specifications: item.specifications || {},
+        sampleInput: item.sample_input || item.sampleInput || '',
+        relatedInstrument: item.related_instrument || '',
+      }));
+
+    console.log('[SOLUTION_WORKFLOW] Success:', {
+      itemCount: items.length,
+      instruments: instruments.length,
+      accessories: accessories.length
+    });
+
+    return {
+      success: true,
+      responseType: 'solution',
+      message: result.response || agenticResponse.response || '',
+      instruments,
+      accessories,
+      projectName: agenticResponse.solution_name || agenticResponse.project_name || 'Solution Project',
+      awaitingSelection: agenticResponse.awaiting_selection || true,
+      items,
+      solutionContext: agenticResponse.solution_context,
+    };
+
+  } catch (error: any) {
+    console.error("[SOLUTION_WORKFLOW] Error:", error.response?.data || error.message);
+    throw new Error(error.response?.data?.error || "Failed to run solution workflow");
+  }
+};
+
+// ====================================================================
+// === ENGENIE CHAT API ===
+// ====================================================================
+
+/**
+ * EnGenie Chat result interface
+ */
+export interface EnGenieChatResult {
+  success: boolean;
+  response_text: string;
+  citations: Array<{ source: string; content: string }>;
+  source_type: string;
+  confidence: number;
+  is_validated: boolean;
+  error?: string;
+}
+
+/**
+ * Calls the EnGenie Chat workflow for greetings, knowledge questions, and general chat.
+ * This is the conversational AI component that handles non-product-search interactions.
+ * 
+ * @param message User's message (greeting, question, chitchat)
+ * @param sessionId Optional session ID for conversation context
+ * @returns A promise that resolves with the chat response
+ */
+export const callEnGenieChat = async (
+  message: string,
+  sessionId?: string
+): Promise<EnGenieChatResult> => {
+  try {
+    console.log('[ENGENIE_CHAT] Calling EnGenie Chat workflow...');
+    console.log('[ENGENIE_CHAT] Message:', message.substring(0, 100));
+
+    const payload: any = {
+      question: message,
+      message: message, // Backend accepts both
+    };
+
+    if (sessionId) {
+      payload.session_id = sessionId;
+    }
+
+    const response = await axios.post('/api/agentic/engenie-chat', payload);
+    const result = response.data;
+
+    console.log('[ENGENIE_CHAT] Response received:', {
+      success: result.success,
+      hasResponseText: !!result.data?.response_text,
+      sourceType: result.data?.source_type,
+      confidence: result.data?.confidence
+    });
+
+    if (result.success) {
+      return {
+        success: true,
+        response_text: result.data?.response_text || result.data?.response?.answer || '',
+        citations: result.data?.citations || [],
+        source_type: result.data?.source_type || 'unknown',
+        confidence: result.data?.confidence || 0,
+        is_validated: result.data?.is_validated || false,
+      };
+    } else {
+      return {
+        success: false,
+        response_text: result.error || 'Failed to get response from EnGenie',
+        citations: [],
+        source_type: 'error',
+        confidence: 0,
+        is_validated: false,
+        error: result.error,
+      };
+    }
+
+  } catch (error: any) {
+    console.error("[ENGENIE_CHAT] Error:", error.response?.data || error.message);
+
+    // Return a friendly fallback for greetings
+    const lowerMessage = message.toLowerCase().trim();
+    const isGreeting = ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 'good evening'].some(
+      g => lowerMessage === g || lowerMessage === g + '!'
+    );
+
+    if (isGreeting) {
+      return {
+        success: true,
+        response_text: "Hello! I'm Engenie, your industrial procurement assistant. How can I help you find the right instruments for your project today?",
+        citations: [],
+        source_type: 'fallback',
+        confidence: 1.0,
+        is_validated: true,
+      };
+    }
+
+    throw new Error(error.response?.data?.error || "Failed to get chat response");
+  }
+};
+
+// ====================================================================
+// === UNIFIED INTENT ROUTING ===
+// ====================================================================
+
+/**
+ * Unified routing result that can come from any workflow
+ */
+export interface UnifiedRoutingResult {
+  intent: string;
+  responseType: 'solution' | 'requirements' | 'greeting' | 'question' | 'modification' | 'error';
+  message?: string;
+  instruments: any[];
+  accessories: any[];
+  projectName?: string;
+  awaitingSelection?: boolean;
+  items?: any[];
+  isSolution?: boolean;
+  changesMade?: string[];
+}
+
+/**
+ * Routes user input by intent classification.
+ * 
+ * This is the PRIMARY entry point for user input on the Project page.
+ * It replaces direct calls to identifyInstruments or other workflows.
+ * 
+ * Flow:
+ * 1. Calls /api/intent to classify the user's input
+ * 2. Based on intent, routes to appropriate workflow:
+ *    - "solution" → callSolutionWorkflow (complex engineering challenges)
+ *    - "productRequirements" → identifyInstruments (simple product requests)
+ *    - "greeting" / "question" → Returns chat response
+ *    - Other → Returns error or fallback
+ * 
+ * @param userInput User's input text
+ * @param currentInstruments Optional - existing instruments for modification detection
+ * @param currentAccessories Optional - existing accessories for modification detection
+ * @param sessionId Optional - session ID for workflow tracking
+ * @returns A promise that resolves with unified routing result
+ */
+export const routeUserInputByIntent = async (
+  userInput: string,
+  currentInstruments?: any[],
+  currentAccessories?: any[],
+  sessionId?: string
+): Promise<UnifiedRoutingResult> => {
+  try {
+    // Step 1: Classify the intent
+    console.log('[INTENT_ROUTER] Starting intent classification...');
+    const intentResult = await classifyIntent(userInput, sessionId);
+
+    console.log('[INTENT_ROUTER] Intent result:', {
+      intent: intentResult.intent,
+      isSolution: intentResult.isSolution,
+      nextStep: intentResult.nextStep
+    });
+
+    // Step 2: Route based on intent
+    const intent = intentResult.intent;
+    const isSolution = intentResult.isSolution || intent === 'solution';
+
+    // ROUTE 1: Solution Workflow (complex engineering challenges)
+    if (isSolution) {
+      console.log('[INTENT_ROUTER] 🔧 Routing to SOLUTION workflow');
+
+      const solutionResult = await callSolutionWorkflow(userInput, sessionId);
+
+      return {
+        intent: 'solution',
+        responseType: 'solution',
+        message: solutionResult.message,
+        instruments: solutionResult.instruments,
+        accessories: solutionResult.accessories,
+        projectName: solutionResult.projectName,
+        awaitingSelection: solutionResult.awaitingSelection,
+        items: solutionResult.items,
+        isSolution: true,
+      };
+    }
+
+    // ROUTE 2: Product Requirements (simple instrument identification)
+    if (intent === 'productRequirements') {
+      console.log('[INTENT_ROUTER] 📦 Routing to INSTRUMENT IDENTIFIER workflow');
+
+      const identifyResult = await identifyInstruments(
+        userInput,
+        currentInstruments,
+        currentAccessories,
+        sessionId
+      );
+
+      return {
+        intent: 'productRequirements',
+        responseType: identifyResult.responseType || 'requirements',
+        message: identifyResult.message,
+        instruments: identifyResult.instruments,
+        accessories: identifyResult.accessories,
+        projectName: identifyResult.projectName,
+        awaitingSelection: identifyResult.awaitingSelection,
+        items: identifyResult.items,
+        isSolution: false,
+        changesMade: identifyResult.changesMade,
+      };
+    }
+
+    // ROUTE 3: Greeting - Use EnGenie Chat for friendly response
+    if (intent === 'greeting') {
+      console.log('[INTENT_ROUTER] 👋 Routing to ENGENIE CHAT for greeting');
+
+      try {
+        const chatResult = await callEnGenieChat(userInput, sessionId);
+        return {
+          intent: 'greeting',
+          responseType: 'greeting',
+          message: chatResult.response_text || "Hello! I'm Engenie, your industrial procurement assistant. How can I help you find the right instruments for your project today?",
+          instruments: currentInstruments || [],
+          accessories: currentAccessories || [],
+          isSolution: false,
+        };
+      } catch (e) {
+        // Fallback for greetings if EnGenie Chat fails
+        return {
+          intent: 'greeting',
+          responseType: 'greeting',
+          message: "Hello! I'm Engenie, your industrial procurement assistant. How can I help you find the right instruments for your project today?",
+          instruments: currentInstruments || [],
+          accessories: currentAccessories || [],
+          isSolution: false,
+        };
+      }
+    }
+
+    // ROUTE 4: Knowledge Question - Use EnGenie Chat for grounded Q&A
+    if (intent === 'knowledgeQuestion') {
+      console.log('[INTENT_ROUTER] 💡 Routing to ENGENIE CHAT for knowledge question');
+
+      try {
+        const chatResult = await callEnGenieChat(userInput, sessionId);
+        return {
+          intent: 'knowledgeQuestion',
+          responseType: 'question',
+          message: chatResult.response_text || 'I apologize, I could not find an answer to your question.',
+          instruments: currentInstruments || [],
+          accessories: currentAccessories || [],
+          isSolution: false,
+        };
+      } catch (e) {
+        // Fallback to instrument identifier if chat fails
+        const identifyResult = await identifyInstruments(
+          userInput,
+          currentInstruments,
+          currentAccessories,
+          sessionId
+        );
+
+        return {
+          intent: 'knowledgeQuestion',
+          responseType: identifyResult.responseType || 'question',
+          message: identifyResult.message,
+          instruments: identifyResult.instruments,
+          accessories: identifyResult.accessories,
+          projectName: identifyResult.projectName,
+          isSolution: false,
+        };
+      }
+    }
+
+    // ROUTE 5: Workflow (continuing existing workflow)
+    if (intent === 'workflow') {
+      console.log('[INTENT_ROUTER] 🔄 Continuing WORKFLOW');
+      const identifyResult = await identifyInstruments(
+        userInput,
+        currentInstruments,
+        currentAccessories,
+        sessionId
+      );
+
+      return {
+        intent: 'workflow',
+        responseType: identifyResult.responseType || 'requirements',
+        message: identifyResult.message,
+        instruments: identifyResult.instruments,
+        accessories: identifyResult.accessories,
+        projectName: identifyResult.projectName,
+        isSolution: false,
+      };
+    }
+
+    // ROUTE 6: Chitchat / Other conversational intents - Use EnGenie Chat
+    if (intent === 'chitchat' || intent === 'other' || intent === 'chat') {
+      console.log('[INTENT_ROUTER] 💬 Routing to ENGENIE CHAT for conversational intent:', intent);
+
+      try {
+        const chatResult = await callEnGenieChat(userInput, sessionId);
+        return {
+          intent: intent,
+          responseType: 'question',
+          message: chatResult.response_text || "I'm here to help with industrial instrumentation questions. How can I assist you?",
+          instruments: currentInstruments || [],
+          accessories: currentAccessories || [],
+          isSolution: false,
+        };
+      } catch (e) {
+        return {
+          intent: intent,
+          responseType: 'question',
+          message: "I'm here to help with industrial instrumentation and procurement. Please describe what instruments or equipment you're looking for.",
+          instruments: currentInstruments || [],
+          accessories: currentAccessories || [],
+          isSolution: false,
+        };
+      }
+    }
+
+    // ROUTE 7: Fallback - Check if conversational, otherwise treat as product requirements
+    console.log('[INTENT_ROUTER] ⚠️ Unhandled intent:', intent);
+
+    // Check if this looks like a conversational input (short, no technical terms)
+    const isConversational = userInput.length < 50 &&
+      !userInput.toLowerCase().match(/\b(transmitter|sensor|valve|pump|meter|gauge|controller|actuator|flowmeter|thermocouple|pressure|temperature|level|flow)\b/);
+
+    if (isConversational) {
+      console.log('[INTENT_ROUTER] 💬 Short non-technical input - routing to ENGENIE CHAT');
+      try {
+        const chatResult = await callEnGenieChat(userInput, sessionId);
+        return {
+          intent: intent || 'chat',
+          responseType: 'question',
+          message: chatResult.response_text || "I'm here to help with industrial instrumentation. What would you like to know?",
+          instruments: currentInstruments || [],
+          accessories: currentAccessories || [],
+          isSolution: false,
+        };
+      } catch (e) {
+        // Fall through to instrument identifier
+      }
+    }
+
+    // True fallback - treat as product requirements
+    console.log('[INTENT_ROUTER] 📦 Falling back to instrument identifier');
+    const identifyResult = await identifyInstruments(
+      userInput,
+      currentInstruments,
+      currentAccessories,
+      sessionId
+    );
+
+    return {
+      intent: intent || 'other',
+      responseType: identifyResult.responseType || 'requirements',
+      message: identifyResult.message,
+      instruments: identifyResult.instruments,
+      accessories: identifyResult.accessories,
+      projectName: identifyResult.projectName,
+      isSolution: false,
+    };
+
+  } catch (error: any) {
+    console.error("[INTENT_ROUTER] Error:", error.message);
+    throw new Error(error.message || "Failed to route user input");
+  }
+};
+
 
 /**
  * Modification result interface
@@ -780,30 +1628,8 @@ export const getAnalysisProductImages = async (
   }
 };
 
-/**
- * Searches for vendors based on instrument/accessory details
- * @param category Instrument category
- * @param productName Product name or accessory name  
- * @param strategy Procurement strategy (optional)
- * @returns A promise that resolves with vendor search results
- */
-export const searchVendors = async (
-  category: string,
-  productName: string,
-  strategy?: string
-): Promise<any> => {
-  try {
-    const response = await axios.post(`/api/search-vendors`, {
-      category,
-      product_name: productName,
-      strategy: strategy || ""
-    });
-    return convertKeysToCamelCase(response.data);
-  } catch (error: any) {
-    console.error("Vendor search error:", error.response?.data || error.message);
-    throw new Error(error.response?.data?.error || "Failed to search vendors");
-  }
-};
+// searchVendors function removed as it is deprecated.
+// Use callAgenticProductSearch instead.
 
 // ==================== STRATEGY DOCUMENT API FUNCTIONS ====================
 
@@ -988,6 +1814,329 @@ export const uploadStrategyFile = async (file: File): Promise<StrategyFileUpload
       message: error.response?.data?.error || "Failed to upload and process strategy file",
       error: error.response?.data?.error || error.message,
       extractedTextPreview: error.response?.data?.extracted_text_preview
+    };
+  }
+};
+
+// ==================== AGENTIC PRODUCT SEARCH WORKFLOW ====================
+
+/**
+ * Response from agentic product search workflow with checkpoint support
+ */
+export interface AgenticProductSearchResponse {
+  success: boolean;
+  awaiting_user_input: boolean;        // Is workflow paused for user input?
+  sales_agent_response: string;        // Message to show user
+  current_sales_step: string;          // Current checkpoint name (legacy)
+  current_phase: string;               // Current workflow phase
+  thread_id: string;                   // Thread ID for resuming conversation
+  product_type?: string;               // Detected product type
+  schema?: any;                        // Schema for left sidebar display
+  missing_fields?: string[];           // Missing mandatory fields
+  validation_result?: any;             // Full validation result
+  available_advanced_params?: any[];   // Discovered advanced parameters
+  advanced_parameters_result?: {       // Advanced params discovery result
+    discovered_specifications?: any[];
+    selected_specifications?: any[];
+    total_discovered?: number;
+    total_selected?: number;
+  };
+  ranked_products?: any[];             // Final results (if completed)
+  completed?: boolean;                 // Is workflow finished?
+  ready_for_vendor_search?: boolean;   // Ready to proceed with vendor search
+  final_requirements?: {               // Final collected requirements
+    productType?: string;
+    mandatoryRequirements?: Record<string, any>;
+    optionalRequirements?: Record<string, any>;
+    advancedParameters?: any[];
+  };
+  error?: string;                      // Error message if failed
+}
+
+/**
+ * Calls the agentic product search workflow with checkpoint support
+ *
+ * This function handles:
+ * - Thread-based conversation continuity (thread_id)
+ * - Interrupt state detection (awaiting_user_input)
+ * - Multi-checkpoint workflow navigation
+ * - Knowledge question handling
+ * - Error recovery with retry
+ *
+ * @param message User's message or response to checkpoint
+ * @param threadId Optional thread ID for resuming conversation
+ * @param searchSessionId Optional session ID for tracking
+ * @returns Agentic workflow response with checkpoint state
+ *
+ * @example
+ * // Start new conversation
+ * const response = await callAgenticProductSearch("I need a pressure transmitter");
+ *
+ * // Resume conversation
+ * const response = await callAgenticProductSearch("100 PSI range", response.thread_id);
+ */
+export const callAgenticProductSearch = async (
+  message: string,
+  threadId?: string,
+  searchSessionId?: string,
+  productType?: string,           // NEW: Product type for schema lookup
+  sourceWorkflow?: string         // NEW: Source workflow identifier
+): Promise<AgenticProductSearchResponse> => {
+  try {
+    const payload: any = {
+      message: message,
+    };
+
+    // Include thread_id for resuming conversation
+    if (threadId) {
+      payload.thread_id = threadId;
+    }
+
+    // Include session ID if provided
+    if (searchSessionId) {
+      payload.session_id = searchSessionId;
+    }
+
+    // Include product_type if provided (critical for schema lookup)
+    if (productType) {
+      payload.product_type = productType;
+    }
+
+    // Include source_workflow to identify caller
+    if (sourceWorkflow) {
+      payload.source_workflow = sourceWorkflow;
+    }
+
+    console.log('[AGENTIC_PS] Calling product search:', {
+      messagePreview: message.substring(0, 50),
+      threadId,
+      productType,
+      sourceWorkflow,
+      isResume: !!threadId
+    });
+
+    const response = await axios.post(`/api/agentic/product-search`, payload);
+
+    const data = response.data;
+
+    if (!data.success) {
+      throw new Error(data.error || "Product search failed");
+    }
+
+    // Extract response data
+    const responseData = data.data || {};
+
+    // Check if workflow is interrupted (awaiting user input)
+    const isInterrupted = responseData.awaiting_user_input || false;
+
+    console.log('[AGENTIC_PS] Response received:', {
+      currentPhase: responseData.current_phase,
+      currentStep: responseData.current_sales_step,
+      isInterrupted,
+      hasSchema: !!responseData.schema,
+      missingFields: responseData.missing_fields,
+      hasProducts: !!responseData.ranked_products,
+      productCount: responseData.ranked_products?.length || 0
+    });
+
+    return {
+      success: true,
+      awaiting_user_input: isInterrupted,
+      sales_agent_response: responseData.sales_agent_response || responseData.response || "",
+      current_sales_step: responseData.current_sales_step || responseData.current_phase || "initialInput",
+      current_phase: responseData.current_phase || "initial_validation",
+      thread_id: responseData.thread_id || threadId || "",
+      product_type: responseData.product_type,
+      schema: responseData.schema,                              // Schema for left sidebar
+      missing_fields: responseData.missing_fields || [],        // Missing fields
+      validation_result: responseData.validation_result,        // Full validation result
+      available_advanced_params: responseData.available_advanced_params || [],
+      ranked_products: responseData.ranked_products || [],
+      ready_for_vendor_search: responseData.ready_for_vendor_search || false,
+      completed: responseData.completed || !isInterrupted,
+      // CRITICAL: Include final_requirements for triggering analysis after workflow completion
+      final_requirements: responseData.final_requirements
+    };
+
+  } catch (error: any) {
+    console.error("[AGENTIC_PS] Product search error:", error.response?.data || error.message);
+
+    return {
+      success: false,
+      awaiting_user_input: false,
+      sales_agent_response: "",
+      current_sales_step: "analysisError",
+      current_phase: "error",
+      thread_id: threadId || "",
+      completed: false,
+      error: error.response?.data?.error || error.message || "Product search failed"
+    };
+  }
+};
+
+/**
+ * Calls the Product Search Agentic Workflow (New Unified Endpoint)
+ * 
+ * This integrates the complete product search workflow:
+ * - Step 1: Validation (product type detection & schema generation with PPI)
+ * - Step 2: Sales Agent (requirements collection)
+ * - Ready for Step 3: Vendor Search
+ * 
+ * @param userInput User's requirements description
+ * @param source Source of the request: "direct", "instruments_identifier", or "solution_workflow"
+ * @param sourceData Optional data from source workflow
+ * @param searchSessionId Optional session ID
+ * @returns Product search workflow result
+ */
+export const callProductSearchWorkflow = async (
+  userInput: string,
+  source: "direct" | "instruments_identifier" | "solution_workflow" = "direct",
+  sourceData?: any,
+  searchSessionId?: string
+): Promise<any> => {
+  try {
+    const payload: any = {
+      user_input: userInput,
+      source: source,
+    };
+
+    if (sourceData) {
+      payload.source_data = sourceData;
+    }
+
+    if (searchSessionId) {
+      payload.session_id = searchSessionId;
+    }
+
+    console.log(`[PRODUCT_SEARCH] Calling workflow from source: ${source}`);
+    console.log(`[PRODUCT_SEARCH] User input: ${userInput.substring(0, 100)}...`);
+
+    const response = await axios.post(`/api/agentic/product-search`, payload);
+
+    if (!response.data.success) {
+      throw new Error(response.data.error || "Product search workflow failed");
+    }
+
+    console.log(`[PRODUCT_SEARCH] Workflow completed successfully`);
+    console.log(`[PRODUCT_SEARCH] Product type: ${response.data.data.product_type}`);
+
+    return convertKeysToCamelCase(response.data.data);
+  } catch (error: any) {
+    console.error("[PRODUCT_SEARCH] Workflow error:", error.response?.data || error.message);
+    throw new Error(error.response?.data?.error || "Product search workflow failed");
+  }
+};
+
+/**
+ * Resume the Product Search Workflow with user decision
+ * 
+ * Call this when the user responds to an awaiting_user_input checkpoint.
+ * 
+ * @param threadId Thread ID from previous response (required)
+ * @param userDecision User's decision: "add_fields", "continue", "yes", "no"
+ * @param userProvidedFields Optional: Field values provided by user for missing fields
+ * @param userInput Optional: Free-text input from user
+ * @param sessionId Optional: Session tracking ID
+ * @returns Updated workflow response
+ * 
+ * @example
+ * // User chooses to add missing fields
+ * await resumeProductSearch(threadId, "add_fields");
+ * 
+ * // User provides the missing field values
+ * await resumeProductSearch(threadId, undefined, { measurementRange: "0-100 PSI" });
+ * 
+ * // User chooses to skip advanced params
+ * await resumeProductSearch(threadId, "no");
+ */
+export const resumeProductSearch = async (
+  threadId: string,
+  userDecision?: string,
+  userProvidedFields?: Record<string, any>,
+  userInput?: string,
+  sessionId?: string
+): Promise<AgenticProductSearchResponse> => {
+  try {
+    if (!threadId) {
+      throw new Error("thread_id is required to resume workflow");
+    }
+
+    const payload: any = {
+      thread_id: threadId
+    };
+
+    if (userDecision) {
+      payload.user_decision = userDecision;
+    }
+
+    if (userProvidedFields && Object.keys(userProvidedFields).length > 0) {
+      payload.user_provided_fields = userProvidedFields;
+    }
+
+    if (userInput) {
+      payload.user_input = userInput;
+    }
+
+    if (sessionId) {
+      payload.session_id = sessionId;
+    }
+
+    console.log('[RESUME_PS] Resuming workflow:', {
+      threadId,
+      userDecision,
+      hasProvidedFields: !!userProvidedFields,
+      hasUserInput: !!userInput
+    });
+
+    const response = await axios.post('/api/agentic/product-search', payload);
+
+    const data = response.data;
+
+    if (!data.success) {
+      throw new Error(data.error || "Failed to resume workflow");
+    }
+
+    const responseData = data.data || {};
+    const isInterrupted = responseData.awaiting_user_input || false;
+
+    console.log('[RESUME_PS] Response received:', {
+      currentPhase: responseData.current_phase,
+      isInterrupted,
+      hasSchema: !!responseData.schema,
+      completed: responseData.completed
+    });
+
+    return {
+      success: true,
+      awaiting_user_input: isInterrupted,
+      sales_agent_response: responseData.sales_agent_response || "",
+      current_sales_step: responseData.current_sales_step || responseData.current_phase || "initialInput",
+      current_phase: responseData.current_phase || "initial_validation",
+      thread_id: responseData.thread_id || threadId,
+      product_type: responseData.product_type,
+      schema: responseData.schema,
+      missing_fields: responseData.missing_fields || [],
+      validation_result: responseData.validation_result,
+      available_advanced_params: responseData.available_advanced_params || [],
+      ranked_products: responseData.ranked_products || [],
+      ready_for_vendor_search: responseData.ready_for_vendor_search || false,
+      completed: responseData.completed || !isInterrupted,
+      // CRITICAL: Include final_requirements for triggering analysis after workflow completion
+      final_requirements: responseData.final_requirements
+    };
+
+  } catch (error: any) {
+    console.error("[RESUME_PS] Error:", error.response?.data || error.message);
+
+    return {
+      success: false,
+      awaiting_user_input: false,
+      sales_agent_response: "",
+      current_sales_step: "analysisError",
+      current_phase: "error",
+      thread_id: threadId,
+      completed: false,
+      error: error.response?.data?.error || error.message || "Failed to resume workflow"
     };
   }
 };

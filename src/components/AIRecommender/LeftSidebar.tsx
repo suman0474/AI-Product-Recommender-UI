@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Bot, LogOut, ChevronLeft, ChevronRight, User, Upload } from "lucide-react";
 import { RequirementSchema, ValidationResult } from "./types";
-import { getFieldDescription } from "./api";
+// Note: getAllFieldDescriptions is imported dynamically in useEffect for batch fetching
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -38,6 +38,37 @@ function prettify(raw: string): string {
     .join(" ");
 }
 
+/**
+ * Deduplicate concatenated values like "5 mΩ 50 mΩ 5 mΩ 10 mΩ 5 mΩ"
+ * This handles cases where multiple values are joined together with spaces
+ */
+function deduplicateValue(value: string): string {
+  if (!value || typeof value !== 'string') return value;
+
+  // Pattern to match value+unit pairs (e.g., "5 mΩ", "24-16 AWG", "50g")
+  const unitPattern = /(\d+[-\d]*\s*(?:mΩ|Ω|AWG|V|VAC|VDC|A|mA|kV|Hz|g|N|mm|°C|%|MΩ-km|MΩ|µm))/gi;
+  const matches = value.match(unitPattern);
+
+  if (matches && matches.length > 1) {
+    // Deduplicate the matches
+    const seen = new Set<string>();
+    const unique: string[] = [];
+    for (const match of matches) {
+      const normalized = match.trim().toLowerCase();
+      if (!seen.has(normalized)) {
+        seen.add(normalized);
+        unique.push(match.trim());
+      }
+    }
+    // Only replace if we reduced duplicates
+    if (unique.length < matches.length) {
+      return unique.join(', ');
+    }
+  }
+
+  return value;
+}
+
 function getNestedValue(obj: any, path: string): any {
   if (!obj) return undefined;
   return path.split(".").reduce((acc, k) => (acc ? acc[k] : undefined), obj);
@@ -60,6 +91,8 @@ function renderFlatFieldsList(
   parentKey = ""
 ): JSX.Element[] {
   const fieldsByCategory: { [category: string]: any[] } = {};
+  // Track seen field names to prevent duplicates from mandatory + optional
+  const seenFieldNames = new Set<string>();
 
   function traverseAndCollect(currentObj: any, currentParentKey = "", hierarchyPath: string[] = []) {
     Object.entries(currentObj).forEach(([key, value]) => {
@@ -67,17 +100,53 @@ function renderFlatFieldsList(
       const newHierarchyPath = [...hierarchyPath, prettify(key)];
 
       if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-        // Recursively traverse nested objects, building the hierarchy path
-        traverseAndCollect(value, fullKey, newHierarchyPath);
+        // Check if this is a Deep Agent structured object with 'value' property
+        // Deep Agent returns: { value: "...", source: "...", confidence: 0.9, standards_referenced: [...] }
+        if ("value" in value && typeof value.value === "string") {
+          // This is a structured field - extract the value and treat as leaf
+          const extractedValue = value.value;
+          const isFilled = extractedValue !== undefined && extractedValue !== "" && extractedValue !== null && extractedValue.toLowerCase() !== "not specified";
+          const fieldName = prettify(key);
+          const hierarchicalLabel = newHierarchyPath.length > 1
+            ? `${newHierarchyPath.slice(0, -1).join(" > ")} > ${fieldName}`
+            : fieldName;
+          const displayValue = deduplicateValue(String(extractedValue ?? ""));
+          const categoryPath = newHierarchyPath.slice(0, -1).join(" ");
+
+          const category = categoryPath || "General";
+          if (!fieldsByCategory[category]) {
+            fieldsByCategory[category] = [];
+          }
+
+          // Skip if field name already seen (prevents duplicates from mandatory + optional)
+          if (!seenFieldNames.has(fieldName)) {
+            seenFieldNames.add(fieldName);
+            fieldsByCategory[category].push({
+              fullKey,
+              fieldName,
+              hierarchicalLabel,
+              displayValue,
+              isFilled,
+              fieldDescriptions
+            });
+          }
+        } else {
+          // Recursively traverse nested objects, building the hierarchy path
+          traverseAndCollect(value, fullKey, newHierarchyPath);
+        }
       } else {
         // This is a leaf field, group it by category
-        const valueRaw = getNestedValue(collectedData, fullKey);
+        let valueRaw = getNestedValue(collectedData, fullKey);
+        // Handle structured Deep Agent data in collectedData
+        if (valueRaw && typeof valueRaw === "object" && !Array.isArray(valueRaw) && "value" in valueRaw) {
+          valueRaw = valueRaw.value;
+        }
         const isFilled = valueRaw !== undefined && valueRaw !== "" && valueRaw !== null;
         const fieldName = prettify(key);
         const hierarchicalLabel = newHierarchyPath.length > 1
           ? `${newHierarchyPath.slice(0, -1).join(" > ")} > ${fieldName}`
           : fieldName;
-        const displayValue = Array.isArray(valueRaw) ? valueRaw.join(", ") : String(valueRaw ?? "");
+        const displayValue = deduplicateValue(Array.isArray(valueRaw) ? valueRaw.join(", ") : String(valueRaw ?? ""));
         const categoryPath = newHierarchyPath.slice(0, -1).join(" ");
 
         // Group fields by category
@@ -86,14 +155,18 @@ function renderFlatFieldsList(
           fieldsByCategory[category] = [];
         }
 
-        fieldsByCategory[category].push({
-          fullKey,
-          fieldName,
-          hierarchicalLabel,
-          displayValue,
-          isFilled,
-          fieldDescriptions
-        });
+        // Skip if field name already seen (prevents duplicates from mandatory + optional)
+        if (!seenFieldNames.has(fieldName)) {
+          seenFieldNames.add(fieldName);
+          fieldsByCategory[category].push({
+            fullKey,
+            fieldName,
+            hierarchicalLabel,
+            displayValue,
+            isFilled,
+            fieldDescriptions
+          });
+        }
       }
     });
   }
@@ -133,11 +206,30 @@ function renderFlatFieldsList(
             </Tooltip>
           </TooltipProvider>
 
-          <span
-            className={`break-words ${field.isFilled ? "text-green-700 font-mono" : "text-red-500 font-mono"}`}
-          >
-            {field.isFilled ? field.displayValue : "Not specified"}
-          </span>
+          {(() => {
+            // Determine the actual display value
+            let displayValue: string;
+            if (field.isFilled) {
+              displayValue = field.displayValue;
+            } else if (field.fieldDescriptions[field.fullKey] &&
+              !field.fieldDescriptions[field.fullKey].toLowerCase().startsWith("specification for")) {
+              displayValue = field.fieldDescriptions[field.fullKey];
+            } else {
+              displayValue = "Not specified";
+            }
+
+            // Check if the value is meaningful (not empty or "Not specified")
+            const isValueMeaningful = displayValue &&
+              displayValue.trim() !== "" &&
+              displayValue.toLowerCase() !== "not specified" &&
+              !displayValue.toLowerCase().startsWith("specification for");
+
+            return (
+              <span className={`break-words ${isValueMeaningful ? "text-green-700 font-mono" : "text-red-500 font-mono"}`}>
+                {displayValue}
+              </span>
+            );
+          })()}
         </div>
       );
     });
@@ -183,46 +275,59 @@ const LeftSidebar = ({
   // This ensures the sidebar undocks at the same time as the API response message appears
 
   const profileButtonLabel = capitalizeFirstLetter(user?.name || user?.username || "User");
-  const profileFullName = user?.name || `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || user?.username || "User";
+  const profileFullName = user?.name || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.username || "User";
 
   useEffect(() => {
     // Update fieldDescriptions when savedFieldDescriptions prop changes
     if (savedFieldDescriptions && Object.keys(savedFieldDescriptions).length > 0) {
-      console.log('Using saved field descriptions:', Object.keys(savedFieldDescriptions).length, 'fields');
+      console.log('[FIELDS] Using saved field descriptions:', Object.keys(savedFieldDescriptions).length, 'fields');
       setFieldDescriptions(savedFieldDescriptions);
       return;
     }
 
-    async function fetchAllDescriptions() {
+    async function fetchAllDescriptionsBatch() {
       if (!requirementSchema || !currentProductType) return;
+
       const allKeys = [
         ...getAllLeafKeys(requirementSchema.mandatoryRequirements || {}),
         ...getAllLeafKeys(requirementSchema.optionalRequirements || {}),
       ];
       if (allKeys.length === 0) return;
 
-      console.log('No saved descriptions found, fetching from API for', allKeys.length, 'fields');
+      console.log('[FIELDS] Fetching all field values in BATCH for', allKeys.length, 'fields');
+
       try {
-        const promises = allKeys.map((key) => getFieldDescription(key, currentProductType));
-        const results = await Promise.allSettled(promises);
+        // Import and use the batch API
+        const { getAllFieldDescriptions } = await import("./api");
+
+        // Single batch request for ALL fields
+        const batchResults = await getAllFieldDescriptions(allKeys, currentProductType);
+
+        // Build descriptions map from batch results
         const newDescriptions: Record<string, string> = {};
-        results.forEach((result, i) => {
-          const key = allKeys[i];
-          newDescriptions[key] =
-            result.status === "fulfilled" ? result.value.description : "No description available";
+        allKeys.forEach((key) => {
+          newDescriptions[key] = batchResults[key] || "Not specified";
         });
+
         setFieldDescriptions(newDescriptions);
-        console.log('Field descriptions fetched from API:', Object.keys(newDescriptions).length, 'fields');
+        console.log('[FIELDS] ✓ Batch fetch complete:', Object.keys(newDescriptions).length, 'fields');
 
         // Notify parent component about the new field descriptions
         if (onFieldDescriptionsChange) {
           onFieldDescriptionsChange(newDescriptions);
         }
       } catch (err) {
-        console.error("Error fetching field descriptions", err);
+        console.error("[FIELDS] Batch fetch error:", err);
+        // Fallback: set empty descriptions
+        const emptyDescriptions: Record<string, string> = {};
+        allKeys.forEach((key) => {
+          emptyDescriptions[key] = "Not specified";
+        });
+        setFieldDescriptions(emptyDescriptions);
       }
     }
-    fetchAllDescriptions();
+
+    fetchAllDescriptionsBatch();
   }, [requirementSchema, currentProductType, savedFieldDescriptions]);
 
 

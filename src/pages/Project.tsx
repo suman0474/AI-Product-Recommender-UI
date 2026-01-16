@@ -5,7 +5,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Send, Loader2, Play, Bot, LogOut, User, Upload, Save, FolderOpen, FileText, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { BASE_URL } from '../components/AIRecommender/api';
-import { identifyInstruments, validateRequirements, searchVendors } from '@/components/AIRecommender/api';
+import { routeUserInputByIntent, validateRequirements } from '@/components/AIRecommender/api';
+
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ReactMarkdown from 'react-markdown';
 import BouncingDots from '@/components/AIRecommender/BouncingDots';
@@ -137,7 +138,7 @@ const Project = () => {
     const [showResults, setShowResults] = useState(false);
     const [activeTab, setActiveTab] = useState<string>('project');
     const [previousTab, setPreviousTab] = useState<string>('project');
-    const [searchTabs, setSearchTabs] = useState<{ id: string; title: string; input: string }[]>([]);
+    const [searchTabs, setSearchTabs] = useState<{ id: string; title: string; input: string; isDirectSearch?: boolean; productType?: string }[]>([]);
     const [projectName, setProjectName] = useState<string>('Project');
     const [editingProjectName, setEditingProjectName] = useState<boolean>(false);
     const [editProjectNameValue, setEditProjectNameValue] = useState<string>(projectName);
@@ -408,27 +409,30 @@ const Project = () => {
         setIsLoading(true);
 
         try {
-            // Use LLM-based classification: Always send current instruments/accessories
-            // The backend will use LLM to determine if this is:
-            // - A modification request (if existing data provided and user wants to change it)
-            // - New requirements (if no existing data or user provides fresh requirements)
-            // - A question, greeting, or unrelated content
-            console.log('[API] Sending request with', instruments.length, 'instruments and', accessories.length, 'accessories');
+            // ====================================================================
+            // UNIFIED INTENT ROUTING - Routes based on intent classification
+            // NO direct workflow calls - intent classification determines the route
+            // ====================================================================
+            console.log('[INTENT_ROUTER] Routing user input with', instruments.length, 'instruments and', accessories.length, 'accessories');
 
-            const response = await identifyInstruments(
+            // Use unified intent-based routing instead of direct workflow calls
+            const response = await routeUserInputByIntent(
                 finalRequirements,
                 instruments.length > 0 ? instruments : undefined,
                 accessories.length > 0 ? accessories : undefined
             );
 
-            // Check response type
-            const responseType = (response as any).responseType || (response as any).response_type;
+            // Check response type and intent
+            const responseType = response.responseType;
+            const isSolution = response.isSolution;
+
+            console.log('[INTENT_ROUTER] Response:', { intent: response.intent, responseType, isSolution });
 
             // CASE 1: Greeting response - Show message in chat
             if (responseType === 'greeting') {
-                addChatMessage('assistant', (response as any).message || '');
-                setShowResults(true); // Make input box smaller, consistent with requirements
-                // Don't clear instruments/accessories on greeting - keep existing data
+                addChatMessage('assistant', response.message || "Hello! How can I help you find industrial instruments today?");
+                setShowResults(true);
+                // Keep existing data on greeting
                 if (instruments.length === 0 && accessories.length === 0) {
                     setInstruments([]);
                     setAccessories([]);
@@ -438,9 +442,9 @@ const Project = () => {
 
             // CASE 2: Question response - Show message in chat
             if (responseType === 'question') {
-                addChatMessage('assistant', (response as any).message || '');
-                setShowResults(true); // Make input box smaller, consistent with requirements
-                // Don't clear instruments/accessories on question - keep existing data
+                addChatMessage('assistant', response.message || '');
+                setShowResults(true);
+                // Keep existing data on question
                 if (instruments.length === 0 && accessories.length === 0) {
                     setInstruments([]);
                     setAccessories([]);
@@ -450,7 +454,7 @@ const Project = () => {
 
             // CASE 3: Modification response - Update the list with changes
             if (responseType === 'modification') {
-                const modMessage = (response as any).message || 'I\'ve updated your instrument list based on your request.';
+                const modMessage = response.message || 'I\'ve updated your instrument list based on your request.';
                 addChatMessage('assistant', modMessage);
 
                 // Update instruments and accessories with modified list
@@ -473,9 +477,7 @@ const Project = () => {
                     fetchGenericImagesLazy(newProductNames);
                 }
 
-
-
-                const changeCount = (response as any).changesMade?.length || 0;
+                const changeCount = response.changesMade?.length || 0;
                 toast({
                     title: "List Updated",
                     description: `Applied ${changeCount} change(s). You now have ${response.instruments?.length || 0} instruments and ${response.accessories?.length || 0} accessories.`,
@@ -483,11 +485,13 @@ const Project = () => {
                 return;
             }
 
-            // CASE 4: Requirements response (instruments and accessories)
-            if (responseType === 'requirements') {
-                // Use the message from backend response
-                const summaryMessage = (response as any).message || `I've identified instruments and accessories based on your requirements. You can view the detailed list in the right panel.`;
-                addChatMessage('assistant', summaryMessage);
+            // CASE 4: Solution response (complex engineering challenge)
+            // Also handles regular requirements response
+            if (responseType === 'solution' || responseType === 'requirements') {
+                // Log solution-specific handling
+                if (isSolution) {
+                    console.log('[SOLUTION] Processing solution workflow response');
+                }
 
                 setInstruments(response.instruments || []);
                 setAccessories(response.accessories || []);
@@ -496,13 +500,12 @@ const Project = () => {
                 // Automatically undock the right panel when results arrive
                 setIsRightDocked(false);
 
-                // Set the project name from the API response, fallback to 'Project' if not provided
+                // Set the project name from the API response
                 if (response.projectName) {
                     setProjectName(response.projectName);
                 }
 
                 // Lazy load generic images in BACKGROUND (non-blocking)
-                // Images will appear progressively as they're fetched
                 const productNames: string[] = [];
                 (response.instruments || []).forEach((inst: any) => {
                     if (inst.productName) productNames.push(inst.productName);
@@ -512,17 +515,21 @@ const Project = () => {
                 });
 
                 if (productNames.length > 0) {
-                    // This runs asynchronously - doesn't block UI
                     fetchGenericImagesLazy(productNames);
                 }
 
-
+                // Solution-specific toast message
+                const toastTitle = isSolution ? "Solution Identified" : "Success";
+                const toastDesc = isSolution
+                    ? `Identified ${response.instruments?.length || 0} instruments and ${response.accessories?.length || 0} accessories for your engineering challenge`
+                    : `Identified ${response.instruments?.length || 0} instruments and ${response.accessories?.length || 0} accessories`;
 
                 toast({
-                    title: "Success",
-                    description: `Identified ${response.instruments?.length || 0} instruments and ${response.accessories?.length || 0} accessories`,
+                    title: toastTitle,
+                    description: toastDesc,
                 });
             }
+
         } catch (error: any) {
             addChatMessage('assistant', `I couldn't process your request. ${error.message || 'Please try again.'}`);
             toast({
@@ -602,7 +609,7 @@ const Project = () => {
         }
     };
 
-    const addSearchTab = (input: string, categoryName?: string) => {
+    const addSearchTab = (input: string, categoryName?: string, isDirectSearch: boolean = false, productType?: string) => {
         // Save current scroll position before switching tabs
         if (activeTab === 'project' && projectScrollRef.current) {
             setSavedScrollPosition(projectScrollRef.current.scrollTop);
@@ -613,7 +620,13 @@ const Project = () => {
 
         if (existingTabIndex !== -1) {
             const updatedTabs = [...searchTabs];
-            updatedTabs[existingTabIndex] = { ...updatedTabs[existingTabIndex], input };
+            // Update existing tab with new input and direct search flag
+            updatedTabs[existingTabIndex] = {
+                ...updatedTabs[existingTabIndex],
+                input,
+                isDirectSearch,
+                productType
+            };
             setSearchTabs(updatedTabs);
 
             setTimeout(() => {
@@ -626,7 +639,7 @@ const Project = () => {
 
         const nextIndex = searchTabs.length + 1;
         const id = `search-${Date.now()}-${nextIndex}`;
-        const newTabs = [...searchTabs, { id, title, input }];
+        const newTabs = [...searchTabs, { id, title, input, isDirectSearch, productType }];
         setSearchTabs(newTabs);
 
         setTimeout(() => {
@@ -654,91 +667,15 @@ const Project = () => {
     const handleRun = async (instrument: IdentifiedInstrument, index: number) => {
         const qty = instrument.quantity ? ` (${instrument.quantity})` : '';
 
-        // Automatically search for vendors
-        try {
-            console.log(`[VENDOR_SEARCH] Input details:`, {
-                category: instrument.category,
-                productName: instrument.productName,
-                strategy: ''
-            });
-            console.log(`[VENDOR_SEARCH] Searching vendors for: ${instrument.category} - ${instrument.productName}`);
-            const vendorResults = await searchVendors(
-                instrument.category,
-                instrument.productName,
-                '' // Default empty strategy
-            );
-            console.log(`[VENDOR_SEARCH] API Response for ${instrument.productName}:`);
-            console.log('- Total Count:', vendorResults.totalCount);
-            console.log('- Full Response:', vendorResults);
-
-            // Display vendor results with complete details
-            if (vendorResults.vendors && vendorResults.vendors.length > 0) {
-                console.log(`[VENDOR_LIST] Found ${vendorResults.totalCount} matching vendors from CSV:`);
-                vendorResults.vendors.forEach((vendor, index) => {
-                    console.log(`  ${index + 1}. Vendor:`, {
-                        name: vendor.vendor_name,
-                        category: vendor.category,
-                        subcategory: vendor.subcategory,
-                        strategy: vendor.strategy,
-                        refinery: vendor.refinery,
-                        owner: vendor.owner_name,
-                        comments: vendor.additional_comments
-                    });
-                });
-                console.log('[VENDOR_NAMES] Vendor names only:', vendorResults.vendors.map(v => v.vendor_name));
-            } else {
-                console.log('[VENDOR_LIST] No vendors found in CSV for this product type');
-            }
-        } catch (error) {
-            console.warn(`[VENDOR_SEARCH] Failed to search vendors for ${instrument.productName}:`, error);
-        }
-
-        addSearchTab(instrument.sampleInput, `${index + 1}. ${instrument.category}${qty}`);
+        // Pass instrument.category as productType for proper schema lookup
+        addSearchTab(instrument.sampleInput, `${index + 1}. ${instrument.category}${qty}`, true, instrument.category);
     };
 
     const handleRunAccessory = async (accessory: IdentifiedAccessory, index: number) => {
         const qty = accessory.quantity ? ` (${accessory.quantity})` : '';
 
-        // Automatically search for vendors
-        try {
-            console.log(`[VENDOR_SEARCH] Input details:`, {
-                category: accessory.category,
-                accessoryName: accessory.accessoryName,
-                strategy: ''
-            });
-            console.log(`[VENDOR_SEARCH] Searching vendors for accessory: ${accessory.category} - ${accessory.accessoryName}`);
-            const vendorResults = await searchVendors(
-                accessory.category,
-                accessory.accessoryName,
-                '' // Default empty strategy
-            );
-            console.log(`[VENDOR_SEARCH] API Response for ${accessory.accessoryName}:`);
-            console.log('- Total Count:', vendorResults.totalCount);
-            console.log('- Full Response:', vendorResults);
-
-            // Display vendor results with complete details
-            if (vendorResults.vendors && vendorResults.vendors.length > 0) {
-                console.log(`[VENDOR_LIST] Found ${vendorResults.totalCount} matching vendors from CSV:`);
-                vendorResults.vendors.forEach((vendor, index) => {
-                    console.log(`  ${index + 1}. Vendor:`, {
-                        name: vendor.vendor_name,
-                        category: vendor.category,
-                        subcategory: vendor.subcategory,
-                        strategy: vendor.strategy,
-                        refinery: vendor.refinery,
-                        owner: vendor.owner_name,
-                        comments: vendor.additional_comments
-                    });
-                });
-                console.log('[VENDOR_NAMES] Vendor names only:', vendorResults.vendors.map(v => v.vendor_name));
-            } else {
-                console.log('[VENDOR_LIST] No vendors found in CSV for this accessory type');
-            }
-        } catch (error) {
-            console.warn(`[VENDOR_SEARCH] Failed to search vendors for ${accessory.accessoryName}:`, error);
-        }
-
-        addSearchTab(accessory.sampleInput, `${index + 1}. ${accessory.category}${qty}`);
+        // Pass accessory.category as productType for proper schema lookup
+        addSearchTab(accessory.sampleInput, `${index + 1}. ${accessory.category}${qty}`, true, accessory.category);
     };
 
     const handleNewProject = () => {
@@ -2323,6 +2260,8 @@ const Project = () => {
                             <AIRecommender
                                 key={tab.id}
                                 initialInput={tab.input}
+                                isDirectSearch={tab.isDirectSearch}
+                                productType={tab.productType}
                                 fillParent
                                 onStateChange={(state) => handleTabStateChange(tab.id, state)}
                                 savedMessages={savedState?.messages}

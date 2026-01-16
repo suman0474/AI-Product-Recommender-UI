@@ -1,8 +1,8 @@
 import { useRef, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Bot, User, CheckCircle, Loader2 } from "lucide-react";
-import { ChatMessage } from "./types";
+import { Send, Bot, User, CheckCircle, Loader2, AlertCircle, Info } from "lucide-react";
+import { ChatMessage, AgenticCheckpointState, WorkflowType } from "./types";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
 import BouncingDots from './BouncingDots';
@@ -32,6 +32,11 @@ interface ChatInterfaceProps {
   vendorAnalysisComplete: boolean;
   onRetry: () => void;
   searchSessionId?: string; // Optional session ID for debugging
+
+  // NEW: Agentic workflow support
+  agenticState?: AgenticCheckpointState;
+  workflowType?: WorkflowType;
+  onRetryError?: () => void;
 }
 
 interface MessageRowProps {
@@ -131,6 +136,10 @@ const ChatInterface = ({
   vendorAnalysisComplete,
   onRetry,
   searchSessionId,
+  // NEW: Agentic workflow props
+  agenticState,
+  workflowType = "flask",
+  onRetryError,
 }: ChatInterfaceProps) => {
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -283,6 +292,143 @@ const ChatInterface = ({
     return null;
   };
 
+  // NEW: Render agentic checkpoint-specific UI
+  const renderAgenticCheckpoint = (checkpoint: string) => {
+    if (workflowType !== "agentic" || !agenticState) return null;
+
+    switch (checkpoint) {
+      case "greeting":
+        return (
+          <div className="mt-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <p className="text-xs text-blue-700 flex items-center">
+              <Info className="h-3 w-3 mr-1" />
+              Welcome! Let's find the perfect industrial product for you.
+            </p>
+          </div>
+        );
+
+      case "initialInput":
+        return agenticState.productType ? (
+          <div className="mt-2 p-3 bg-green-50 rounded-lg border border-green-200">
+            <p className="text-xs text-green-700 flex items-center">
+              <CheckCircle className="h-3 w-3 mr-1" />
+              Product type detected: <strong className="ml-1">{agenticState.productType}</strong>
+            </p>
+          </div>
+        ) : null;
+
+      case "awaitMissingInfo":
+        return (
+          <div className="mt-2 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+            <p className="text-xs font-medium text-yellow-800 mb-1">
+              📋 Missing Information
+            </p>
+            <p className="text-xs text-yellow-700">
+              A few more details will help me find the best products.
+            </p>
+          </div>
+        );
+
+      case "awaitAdvancedSpecs":
+        return agenticState.availableAdvancedParams && agenticState.availableAdvancedParams.length > 0 ? (
+          <div className="mt-2 p-3 bg-purple-50 rounded-lg border border-purple-200">
+            <p className="text-xs font-medium text-purple-800 mb-2">
+              🔍 Advanced Parameters Available ({agenticState.availableAdvancedParams.length})
+            </p>
+            <div className="space-y-0.5">
+              {agenticState.availableAdvancedParams.slice(0, 5).map((param: any, idx: number) => (
+                <div key={idx} className="text-xs text-purple-600">
+                  • {param.name || param}
+                </div>
+              ))}
+              {agenticState.availableAdvancedParams.length > 5 && (
+                <div className="text-xs text-purple-500 italic mt-1">
+                  +{agenticState.availableAdvancedParams.length - 5} more parameters...
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null;
+
+      case "showSummary":
+        return (
+          <div className="mt-2 p-3 bg-indigo-50 rounded-lg border border-indigo-200">
+            <p className="text-xs font-medium text-indigo-800 mb-1">
+              📊 Requirements Summary
+            </p>
+            <p className="text-xs text-indigo-700">
+              Please review and confirm before I search for products.
+            </p>
+          </div>
+        );
+
+      case "analysisError":
+        return (
+          <div className="mt-2 p-3 bg-red-50 rounded-lg border border-red-200">
+            <p className="text-xs font-medium text-red-800 mb-2 flex items-center">
+              <AlertCircle className="h-3 w-3 mr-1" />
+              Analysis Error
+            </p>
+            {agenticState.errorMessage && (
+              <p className="text-xs text-red-700 mb-2">{agenticState.errorMessage}</p>
+            )}
+            {onRetryError && (
+              <Button
+                onClick={onRetryError}
+                size="sm"
+                variant="outline"
+                className="h-6 text-xs border-red-300 text-red-700 hover:bg-red-100"
+              >
+                Retry Analysis
+              </Button>
+            )}
+          </div>
+        );
+
+      case "knowledgeQuestion":
+        return (
+          <div className="mt-2 p-3 bg-teal-50 rounded-lg border border-teal-200">
+            <p className="text-xs font-medium text-teal-800 flex items-center">
+              <Info className="h-3 w-3 mr-1" />
+              Question Answered - Let's continue...
+            </p>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  // NEW: Render workflow status bar
+  const renderWorkflowStatus = () => {
+    if (workflowType === "agentic" && agenticState) {
+      return (
+        <div className="p-2 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg mb-3">
+          <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center space-x-2">
+              <div className={`w-1.5 h-1.5 rounded-full ${
+                agenticState.awaitingUserInput ? 'bg-yellow-400 animate-pulse' : 'bg-green-400'
+              }`} />
+              <span className="font-medium text-gray-700">
+                {agenticState.awaitingUserInput ? 'Awaiting Your Response' : 'Processing...'}
+              </span>
+            </div>
+            <span className="text-gray-500">
+              {agenticState.currentStep}
+            </span>
+          </div>
+          {agenticState.threadId && (
+            <div className="mt-1 text-xs text-gray-400">
+              Thread: {agenticState.threadId.substring(0, 12)}...
+            </div>
+          )}
+        </div>
+      );
+    }
+    return null;
+  };
+
   const getPlaceholderText = () => {
     if (isLoading) {
       return "Thinking...";
@@ -345,19 +491,33 @@ const ChatInterface = ({
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-no-scrollbar pb-32">
+        {/* NEW: Workflow status bar for agentic workflow */}
+        {renderWorkflowStatus()}
+
         {messages.length === 0 ? (
           <div className="text-center p-6">
             {/* Empty state */}
           </div>
         ) : (
-          messages.map((message) => (
-            <MessageRow
-              key={message.id}
-              message={message}
-              isHistory={isHistoryRef.current}
-              renderVendorAnalysisStatus={renderVendorAnalysisStatus}
-              formatTimestamp={formatTimestamp}
-            />
+          messages.map((message, index) => (
+            <div key={message.id}>
+              <MessageRow
+                message={message}
+                isHistory={isHistoryRef.current}
+                renderVendorAnalysisStatus={renderVendorAnalysisStatus}
+                formatTimestamp={formatTimestamp}
+              />
+
+              {/* NEW: Render agentic checkpoint UI after assistant messages */}
+              {message.type === "assistant" &&
+               workflowType === "agentic" &&
+               agenticState &&
+               index === messages.length - 1 && (
+                <div className="ml-14">
+                  {renderAgenticCheckpoint(agenticState.currentStep)}
+                </div>
+              )}
+            </div>
           ))
         )}
 
