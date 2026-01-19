@@ -243,79 +243,56 @@ const Project = () => {
             .trim();
     };
 
-    // Batched parallel loading: Load multiple images at once in batches
-    // Collects ALL images first, then displays them all at once
-    // IMPORTANT: Merges with existing images to preserve previously loaded ones
+    // SEQUENTIAL image loading - prevents rate limit issues with LLM generation
+    // Cached images load instantly (no delay), only uncached ones are slow
     const fetchGenericImagesLazy = async (productTypes: string[]) => {
         const uniqueTypes = [...new Set(productTypes)]; // Remove duplicates
 
-        // Batch configuration
-        const BATCH_SIZE = 5; // Load 5 images at a time (safe for 8/min limit)
-        const BATCH_DELAY = 2000; // 2 seconds between batches
+        console.log(`[SEQUENTIAL_LOAD] Starting sequential load for ${uniqueTypes.length} images...`);
 
-        console.log(`[PARALLEL_BATCH] Starting batched parallel load for ${uniqueTypes.length} images (batch size: ${BATCH_SIZE})...`);
+        // Load images one by one - cached ones are instant, uncached trigger LLM
+        for (let i = 0; i < uniqueTypes.length; i++) {
+            const productType = uniqueTypes[i];
 
-        // Collect all loaded images here - don't update state until ALL are loaded
-        const allLoadedImages: Record<string, string> = {};
+            // Skip if already loaded
+            if (genericImages[productType]) {
+                console.log(`[SEQUENTIAL_LOAD] [${i + 1}/${uniqueTypes.length}] Already loaded: ${productType}`);
+                continue;
+            }
 
-        // Process images in batches
-        for (let i = 0; i < uniqueTypes.length; i += BATCH_SIZE) {
-            const batch = uniqueTypes.slice(i, i + BATCH_SIZE);
-            const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
-            const totalBatches = Math.ceil(uniqueTypes.length / BATCH_SIZE);
+            try {
+                const encodedType = encodeURIComponent(productType);
+                console.log(`[SEQUENTIAL_LOAD] [${i + 1}/${uniqueTypes.length}] Fetching: ${productType}`);
 
-            console.log(`[PARALLEL_BATCH] Processing batch ${batchNumber}/${totalBatches} (${batch.length} images)...`);
+                const response = await fetch(`${BASE_URL}/api/generic_image/${encodedType}`, {
+                    credentials: 'include'
+                });
 
-            // Fetch all images in this batch IN PARALLEL
-            const batchPromises = batch.map(async (productType, batchIndex) => {
-                const globalIndex = i + batchIndex;
-
-                try {
-                    const encodedType = encodeURIComponent(productType);
-                    console.log(`[PARALLEL_BATCH] [${globalIndex + 1}/${uniqueTypes.length}] Fetching: ${productType}`);
-
-                    const response = await fetch(`${BASE_URL}/api/generic_image/${encodedType}`, {
-                        credentials: 'include'
-                    });
-
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (data.success && data.image) {
-                            const absoluteUrl = getAbsoluteImageUrl(data.image.url);
-                            if (absoluteUrl) {
-                                // Store in temporary object instead of updating state immediately
-                                allLoadedImages[productType] = absoluteUrl;
-                                console.log(`[PARALLEL_BATCH] ✓ Loaded ${globalIndex + 1}/${uniqueTypes.length}: ${productType}`);
-                                return { success: true, productType };
-                            }
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success && data.image) {
+                        const absoluteUrl = getAbsoluteImageUrl(data.image.url);
+                        if (absoluteUrl) {
+                            // Update state immediately for each image (shows as soon as loaded)
+                            setGenericImages(prev => ({
+                                ...prev,
+                                [productType]: absoluteUrl
+                            }));
+                            console.log(`[SEQUENTIAL_LOAD] ✓ Loaded ${i + 1}/${uniqueTypes.length}: ${productType}`);
                         }
-                    } else {
-                        console.warn(`[PARALLEL_BATCH] ✗ Failed (${response.status}): ${productType}`);
                     }
-                } catch (error) {
-                    console.error(`[PARALLEL_BATCH] ✗ Error fetching ${productType}:`, error);
+                } else if (response.status === 404) {
+                    // Image not found - likely LLM generation failed due to rate limit
+                    console.warn(`[SEQUENTIAL_LOAD] ✗ Not found: ${productType} (may need LLM generation later)`);
+                } else {
+                    console.warn(`[SEQUENTIAL_LOAD] ✗ Failed (${response.status}): ${productType}`);
                 }
-                return { success: false, productType };
-            });
-
-            // Wait for all images in this batch to complete
-            const batchResults = await Promise.all(batchPromises);
-            const successCount = batchResults.filter(r => r.success).length;
-            console.log(`[PARALLEL_BATCH] Batch ${batchNumber} complete: ${successCount}/${batch.length} succeeded`);
-
-            // Wait before next batch (except for last batch)
-            if (i + BATCH_SIZE < uniqueTypes.length) {
-                console.log(`[PARALLEL_BATCH] Waiting ${BATCH_DELAY / 1000}s before next batch...`);
-                await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
+            } catch (error) {
+                console.error(`[SEQUENTIAL_LOAD] ✗ Error fetching ${productType}:`, error);
             }
         }
 
-        // ALL batches complete - now MERGE with existing images (don't replace!)
-        console.log(`[PARALLEL_BATCH] All batches complete! Merging ${Object.keys(allLoadedImages).length} new images with existing...`);
-        setGenericImages(prevImages => ({
-            ...prevImages,  // Keep all previously loaded images
-            ...allLoadedImages  // Add/update with new images
-        }));
+        console.log(`[SEQUENTIAL_LOAD] All ${uniqueTypes.length} images processed.`);
     };
 
     // Escape string for use in RegExp
@@ -674,8 +651,20 @@ const Project = () => {
     const handleRunAccessory = async (accessory: IdentifiedAccessory, index: number) => {
         const qty = accessory.quantity ? ` (${accessory.quantity})` : '';
 
-        // Pass accessory.category as productType for proper schema lookup
-        addSearchTab(accessory.sampleInput, `${index + 1}. ${accessory.category}${qty}`, true, accessory.category);
+        // Smart category extraction: If category is generic "Accessories", extract the type from accessoryName
+        let smartCategory = accessory.category || '';
+        const accessoryName = accessory.accessoryName || '';
+        const isGeneric = smartCategory.toLowerCase() === 'accessories' || smartCategory.toLowerCase() === 'accessory';
+
+        if (isGeneric && accessoryName) {
+            // Extract product type from accessoryName (before " for ")
+            // e.g., "Thermowell for Process Temperature Transmitter" -> "Thermowell"
+            const parts = accessoryName.split(' for ');
+            smartCategory = parts[0] || accessoryName;
+        }
+
+        // Pass smart category for both tab title and productType for schema lookup
+        addSearchTab(accessory.sampleInput, `${index + 1}. ${smartCategory}${qty}`, true, smartCategory);
     };
 
     const handleNewProject = () => {
@@ -2102,11 +2091,22 @@ const Project = () => {
                                                                 key={index}
                                                                 className="rounded-xl bg-gradient-to-br from-[#F5FAFC]/90 to-[#EAF6FB]/90 dark:from-slate-900/90 dark:to-slate-900/50 backdrop-blur-2xl border border-white/20 dark:border-slate-700/30 shadow-2xl transition-all duration-300 ease-in-out hover:scale-[1.01] p-8 space-y-6"
                                                             >
-                                                                {/* Category and Product Name */}
+                                                                {/* Category (primary) and Product Name (secondary) - smart category for accessories */}
                                                                 <div className="flex items-start justify-between">
                                                                     <div className="space-y-1">
                                                                         <h3 className="text-xl font-semibold">
-                                                                            {index + 1}. {instrument.category}{instrument.quantity ? ` (${instrument.quantity})` : ''}
+                                                                            {index + 1}. {(() => {
+                                                                                // If category is generic like "Accessories", extract the type from productName
+                                                                                const cat = instrument.category || '';
+                                                                                const name = instrument.productName || '';
+                                                                                const isGeneric = cat.toLowerCase() === 'accessories' || cat.toLowerCase() === 'accessory';
+                                                                                if (isGeneric && name) {
+                                                                                    // Extract first part before "for" (e.g., "Thermowell for X" -> "Thermowell")
+                                                                                    const parts = name.split(' for ');
+                                                                                    return parts[0] || name;
+                                                                                }
+                                                                                return cat || name;
+                                                                            })()}{instrument.quantity ? ` (${instrument.quantity})` : ''}
                                                                         </h3>
                                                                         <p className="text-muted-foreground">
                                                                             {instrument.productName}
@@ -2178,11 +2178,22 @@ const Project = () => {
                                                                 key={index}
                                                                 className="rounded-xl bg-gradient-to-br from-[#F5FAFC]/90 to-[#EAF6FB]/90 dark:from-slate-900/90 dark:to-slate-900/50 backdrop-blur-2xl border border-white/20 dark:border-slate-700/30 shadow-2xl transition-all duration-300 ease-in-out hover:scale-[1.02] p-6 space-y-4"
                                                             >
-                                                                {/* Category and Accessory Name */}
+                                                                {/* Accessory Category (primary) and Name (secondary) - extract type from name if category is generic */}
                                                                 <div className="flex items-start justify-between">
                                                                     <div className="space-y-1">
                                                                         <h3 className="text-xl font-semibold">
-                                                                            {index + 1}. {accessory.category}{accessory.quantity ? ` (${accessory.quantity})` : ''}
+                                                                            {index + 1}. {(() => {
+                                                                                // If category is generic like "Accessories", extract the type from accessoryName
+                                                                                const cat = accessory.category || '';
+                                                                                const name = accessory.accessoryName || '';
+                                                                                const isGeneric = cat.toLowerCase() === 'accessories' || cat.toLowerCase() === 'accessory';
+                                                                                if (isGeneric && name) {
+                                                                                    // Extract first part before "for" (e.g., "Thermowell for X" -> "Thermowell")
+                                                                                    const parts = name.split(' for ');
+                                                                                    return parts[0] || name;
+                                                                                }
+                                                                                return cat || name;
+                                                                            })()}{accessory.quantity ? ` (${accessory.quantity})` : ''}
                                                                         </h3>
                                                                         <p className="text-muted-foreground">
                                                                             {accessory.accessoryName}
