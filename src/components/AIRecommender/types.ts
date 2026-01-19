@@ -121,11 +121,39 @@ export interface UserCredentials {
 }
 
 // New types for step-based workflow
+export interface WorkflowSuggestion {
+  name: string;
+  workflow_id: string;
+  description: string;
+  action: string;
+}
+
 export interface IntentClassificationResult {
   intent: "greeting" | "knowledgeQuestion" | "productRequirements" | "solution" | "workflow" | "chitchat" | "chat" | "other";
   nextStep: "greeting" | "initialInput" | "solutionWorkflow" | "awaitAdditionalAndLatestSpecs" | "awaitAdvancedSpecs" | "showSummary" | "finalAnalysis" | null;
   resumeWorkflow?: boolean;
   isSolution?: boolean;  // True if the input is a complex engineering challenge
+  suggestWorkflow?: WorkflowSuggestion;  // Suggestion for UI to display as clickable option
+  workflowLocked?: boolean;  // True if user is locked in a workflow
+  currentWorkflow?: string;  // Current workflow the user is in
+}
+
+/**
+ * Workflow Routing Result from IntentClassificationRoutingAgent
+ * Used to determine which workflow to route user input to
+ */
+export interface WorkflowRoutingResult {
+  query: string;
+  target_workflow: "solution" | "instrument_identifier" | "product_info" | "out_of_domain";
+  intent: string;
+  confidence: number;
+  reasoning: string;
+  is_solution: boolean;
+  solution_indicators: string[];
+  extracted_info: Record<string, any>;
+  classification_time_ms: number;
+  timestamp: string;
+  reject_message: string | null;
 }
 
 

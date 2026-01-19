@@ -7,6 +7,7 @@ import {
   UserCredentials,
   ChatMessage,
   IntentClassificationResult,
+  WorkflowRoutingResult,
   AgentResponse,
   AdvancedParametersResult,
   AdvancedParametersSelection,
@@ -762,7 +763,22 @@ export const approveOrRejectUser = async (
  */
 /**
  * Classifies user intent and determines next workflow step
+ * Supports workflow state locking - once user enters a workflow, they stay in it
  */
+
+// Store current workflow state (module-level for persistence)
+let currentWorkflowState: string | null = null;
+
+export const getCurrentWorkflow = (): string | null => currentWorkflowState;
+export const setCurrentWorkflow = (workflow: string | null): void => {
+  currentWorkflowState = workflow;
+  console.log('[WORKFLOW_STATE] Current workflow set to:', workflow);
+};
+export const clearWorkflow = (): void => {
+  currentWorkflowState = null;
+  console.log('[WORKFLOW_STATE] Workflow cleared');
+};
+
 export const classifyIntent = async (userInput: string, searchSessionId?: string): Promise<IntentClassificationResult> => {
   try {
     const payload: any = {
@@ -773,7 +789,28 @@ export const classifyIntent = async (userInput: string, searchSessionId?: string
       payload.search_session_id = searchSessionId;
     }
 
+    // Pass current workflow for state locking
+    if (currentWorkflowState) {
+      payload.currentWorkflow = currentWorkflowState;
+      console.log('[INTENT_CLASSIFY] Passing current workflow:', currentWorkflowState);
+    }
+
     const response = await axios.post(`/api/intent`, payload);
+
+    // Update workflow state from response
+    if (response.data.currentWorkflow !== undefined) {
+      if (response.data.currentWorkflow === null) {
+        clearWorkflow();
+      } else {
+        setCurrentWorkflow(response.data.currentWorkflow);
+      }
+    }
+
+    // Log if workflow was locked
+    if (response.data.workflowLocked) {
+      console.log('[INTENT_CLASSIFY] Workflow LOCKED - staying in:', response.data.currentWorkflow);
+    }
+
     return response.data;
   } catch (error: any) {
     console.error("Intent classification error:", error.response?.data || error.message);
@@ -782,6 +819,66 @@ export const classifyIntent = async (userInput: string, searchSessionId?: string
       intent: "other",
       nextStep: null,
       resumeWorkflow: false
+    };
+  }
+};
+
+/**
+ * Classifies user query and determines which workflow to route to.
+ * 
+ * Routes to:
+ * - solution: Complex engineering systems requiring multiple instruments
+ * - instrument_identifier: Single product requirements
+ * - product_info: Questions about products, standards, vendors (opens ProductInfo page)
+ * - out_of_domain: Unrelated queries (rejected with helpful message)
+ * 
+ * @param query User query from UI textarea
+ * @param context Optional context (current_step, conversation history)
+ * @returns WorkflowRoutingResult with target_workflow and routing details
+ */
+export const classifyRoute = async (
+  query: string,
+  context?: { current_step?: string; context?: string }
+): Promise<WorkflowRoutingResult> => {
+  try {
+    const payload: any = { query };
+
+    if (context) {
+      payload.context = context;
+    }
+
+    console.log('[CLASSIFY_ROUTE] Classifying query for workflow routing:', query.substring(0, 50) + '...');
+
+    const response = await axios.post('/api/agentic/classify-route', payload);
+
+    if (!response.data.success) {
+      throw new Error(response.data.error || 'Classification failed');
+    }
+
+    const result = response.data.data as WorkflowRoutingResult;
+
+    console.log('[CLASSIFY_ROUTE] Routing decision:', {
+      target_workflow: result.target_workflow,
+      intent: result.intent,
+      confidence: result.confidence
+    });
+
+    return result;
+  } catch (error: any) {
+    console.error('[CLASSIFY_ROUTE] Error:', error.response?.data || error.message);
+    // Fallback to instrument_identifier (default workflow)
+    return {
+      query: query,
+      target_workflow: 'instrument_identifier',
+      intent: 'requirements',
+      confidence: 0.5,
+      reasoning: 'Fallback due to classification error',
+      is_solution: false,
+      solution_indicators: [],
+      extracted_info: {},
+      classification_time_ms: 0,
+      timestamp: new Date().toISOString(),
+      reject_message: null
     };
   }
 };
@@ -1212,41 +1309,41 @@ export const callEnGenieChat = async (
   sessionId?: string
 ): Promise<EnGenieChatResult> => {
   try {
-    console.log('[ENGENIE_CHAT] Calling EnGenie Chat workflow...');
+    console.log('[ENGENIE_CHAT] Calling Product Info API...');
     console.log('[ENGENIE_CHAT] Message:', message.substring(0, 100));
 
     const payload: any = {
-      question: message,
-      message: message, // Backend accepts both
+      query: message, // /api/product-info/query expects 'query' field
     };
 
     if (sessionId) {
       payload.session_id = sessionId;
     }
 
-    const response = await axios.post('/api/agentic/engenie-chat', payload);
+    // Use the correct endpoint: /api/product-info/query
+    const response = await axios.post('/api/product-info/query', payload);
     const result = response.data;
 
     console.log('[ENGENIE_CHAT] Response received:', {
       success: result.success,
-      hasResponseText: !!result.data?.response_text,
-      sourceType: result.data?.source_type,
-      confidence: result.data?.confidence
+      hasAnswer: !!result.answer,
+      source: result.source,
+      sourcesUsed: result.sources_used
     });
 
     if (result.success) {
       return {
         success: true,
-        response_text: result.data?.response_text || result.data?.response?.answer || '',
-        citations: result.data?.citations || [],
-        source_type: result.data?.source_type || 'unknown',
-        confidence: result.data?.confidence || 0,
-        is_validated: result.data?.is_validated || false,
+        response_text: result.answer || '',
+        citations: result.sources_used || [],
+        source_type: result.source || 'unknown',
+        confidence: result.found_in_database ? 0.9 : 0.7,
+        is_validated: result.found_in_database || false,
       };
     } else {
       return {
         success: false,
-        response_text: result.error || 'Failed to get response from EnGenie',
+        response_text: result.answer || result.error || 'Failed to get response',
         citations: [],
         source_type: 'error',
         confidence: 0,
@@ -1286,9 +1383,16 @@ export const callEnGenieChat = async (
 /**
  * Unified routing result that can come from any workflow
  */
+export interface WorkflowSuggestion {
+  name: string;
+  workflow_id: string;
+  description: string;
+  action: string;
+}
+
 export interface UnifiedRoutingResult {
   intent: string;
-  responseType: 'solution' | 'requirements' | 'greeting' | 'question' | 'modification' | 'error';
+  responseType: 'solution' | 'requirements' | 'greeting' | 'question' | 'modification' | 'error' | 'workflowSuggestion';
   message?: string;
   instruments: any[];
   accessories: any[];
@@ -1297,6 +1401,7 @@ export interface UnifiedRoutingResult {
   items?: any[];
   isSolution?: boolean;
   changesMade?: string[];
+  suggestWorkflow?: WorkflowSuggestion;  // For suggesting workflows without auto-routing
 }
 
 /**
@@ -1411,39 +1516,41 @@ export const routeUserInputByIntent = async (
       }
     }
 
-    // ROUTE 4: Knowledge Question - Use EnGenie Chat for grounded Q&A
+    // ROUTE 4: Knowledge Question - Suggest EnGenie Chat (don't auto-route)
     if (intent === 'knowledgeQuestion') {
-      console.log('[INTENT_ROUTER] 💡 Routing to ENGENIE CHAT for knowledge question');
+      console.log('[INTENT_ROUTER] 💡 Detected knowledge question - suggesting EnGenie Chat');
 
-      try {
-        const chatResult = await callEnGenieChat(userInput, sessionId);
+      // Check if there's a workflow suggestion from the backend
+      const suggestion = intentResult.suggestWorkflow;
+
+      if (suggestion) {
+        // Return suggestion for UI to display as clickable option
         return {
           intent: 'knowledgeQuestion',
-          responseType: 'question',
-          message: chatResult.response_text || 'I apologize, I could not find an answer to your question.',
+          responseType: 'workflowSuggestion',
+          message: `This looks like a question I can help with. Click below to open **${suggestion.name}** for detailed answers.`,
           instruments: currentInstruments || [],
           accessories: currentAccessories || [],
           isSolution: false,
-        };
-      } catch (e) {
-        // Fallback to instrument identifier if chat fails
-        const identifyResult = await identifyInstruments(
-          userInput,
-          currentInstruments,
-          currentAccessories,
-          sessionId
-        );
-
-        return {
-          intent: 'knowledgeQuestion',
-          responseType: identifyResult.responseType || 'question',
-          message: identifyResult.message,
-          instruments: identifyResult.instruments,
-          accessories: identifyResult.accessories,
-          projectName: identifyResult.projectName,
-          isSolution: false,
+          suggestWorkflow: suggestion,  // Frontend will display this as clickable
         };
       }
+
+      // Fallback: if no suggestion, still don't auto-route
+      return {
+        intent: 'knowledgeQuestion',
+        responseType: 'workflowSuggestion',
+        message: 'This looks like a product or knowledge question. Click **EnGenie Chat** to get detailed answers.',
+        instruments: currentInstruments || [],
+        accessories: currentAccessories || [],
+        isSolution: false,
+        suggestWorkflow: {
+          name: 'EnGenie Chat',
+          workflow_id: 'engenie_chat',
+          description: 'Get answers about products, standards, and industrial topics',
+          action: 'openEnGenieChat'
+        },
+      };
     }
 
     // ROUTE 5: Workflow (continuing existing workflow)
@@ -1482,9 +1589,11 @@ export const routeUserInputByIntent = async (
           isSolution: false,
         };
       } catch (e) {
+        // NO FALLBACK - stay isolated in EnGenie Chat
+        console.error('[INTENT_ROUTER] EnGenie Chat failed for chitchat:', e);
         return {
           intent: intent,
-          responseType: 'question',
+          responseType: 'error',
           message: "I'm here to help with industrial instrumentation and procurement. Please describe what instruments or equipment you're looking for.",
           instruments: currentInstruments || [],
           accessories: currentAccessories || [],
@@ -1493,48 +1602,32 @@ export const routeUserInputByIntent = async (
       }
     }
 
-    // ROUTE 7: Fallback - Check if conversational, otherwise treat as product requirements
-    console.log('[INTENT_ROUTER] ⚠️ Unhandled intent:', intent);
+    // ROUTE 7: Unhandled intents - Route to EnGenie Chat (NOT instrument identifier)
+    // This ensures EnGenie Chat workflow stays isolated
+    console.log('[INTENT_ROUTER] ⚠️ Unhandled intent:', intent, '- routing to EnGenie Chat');
 
-    // Check if this looks like a conversational input (short, no technical terms)
-    const isConversational = userInput.length < 50 &&
-      !userInput.toLowerCase().match(/\b(transmitter|sensor|valve|pump|meter|gauge|controller|actuator|flowmeter|thermocouple|pressure|temperature|level|flow)\b/);
-
-    if (isConversational) {
-      console.log('[INTENT_ROUTER] 💬 Short non-technical input - routing to ENGENIE CHAT');
-      try {
-        const chatResult = await callEnGenieChat(userInput, sessionId);
-        return {
-          intent: intent || 'chat',
-          responseType: 'question',
-          message: chatResult.response_text || "I'm here to help with industrial instrumentation. What would you like to know?",
-          instruments: currentInstruments || [],
-          accessories: currentAccessories || [],
-          isSolution: false,
-        };
-      } catch (e) {
-        // Fall through to instrument identifier
-      }
+    try {
+      const chatResult = await callEnGenieChat(userInput, sessionId);
+      return {
+        intent: intent || 'chat',
+        responseType: 'question',
+        message: chatResult.response_text || "I'm here to help with industrial instrumentation. What would you like to know?",
+        instruments: currentInstruments || [],
+        accessories: currentAccessories || [],
+        isSolution: false,
+      };
+    } catch (e) {
+      // NO FALLBACK to other workflows - stay in EnGenie Chat
+      console.error('[INTENT_ROUTER] EnGenie Chat fallback failed:', e);
+      return {
+        intent: intent || 'chat',
+        responseType: 'error',
+        message: 'I encountered an issue. Please try rephrasing your question about industrial instrumentation.',
+        instruments: currentInstruments || [],
+        accessories: currentAccessories || [],
+        isSolution: false,
+      };
     }
-
-    // True fallback - treat as product requirements
-    console.log('[INTENT_ROUTER] 📦 Falling back to instrument identifier');
-    const identifyResult = await identifyInstruments(
-      userInput,
-      currentInstruments,
-      currentAccessories,
-      sessionId
-    );
-
-    return {
-      intent: intent || 'other',
-      responseType: identifyResult.responseType || 'requirements',
-      message: identifyResult.message,
-      instruments: identifyResult.instruments,
-      accessories: identifyResult.accessories,
-      projectName: identifyResult.projectName,
-      isSolution: false,
-    };
 
   } catch (error: any) {
     console.error("[INTENT_ROUTER] Error:", error.message);

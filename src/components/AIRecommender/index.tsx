@@ -24,6 +24,7 @@ import {
   structureRequirements,
   additionalRequirements,
   classifyIntent,
+  classifyRoute,
   discoverAdvancedParameters,
   addAdvancedParameters,
   initializeNewSearch,
@@ -1294,6 +1295,50 @@ const AIRecommender = ({
         // ============================================================
         // NORMAL WORKFLOW FLOW - Intent classification + Flask endpoints
         // ============================================================
+
+        // Step 0: Check workflow routing - determine if this should go to ProductInfo page
+        // This handles chat-based queries (questions, greetings) by routing to ProductInfo
+        const routingResult = await classifyRoute(trimmedInput, {
+          current_step: currentStep,
+          context: state.productType || undefined
+        });
+
+        console.log('[WORKFLOW_ROUTING] Classification result:', {
+          target_workflow: routingResult.target_workflow,
+          intent: routingResult.intent,
+          confidence: routingResult.confidence
+        });
+
+        // Route to ProductInfo page for chat-based queries (questions, greetings, product info)
+        if (routingResult.target_workflow === 'product_info') {
+          console.log('[WORKFLOW_ROUTING] Routing to ProductInfo page for chat-based query');
+
+          // Create a link for the user to click (instead of auto-opening)
+          const productInfoUrl = `/product-info?query=${encodeURIComponent(trimmedInput)}`;
+
+          // Show a message with a clickable link to open ProductInfo
+          await streamAssistantMessage(
+            `This looks like a knowledge question about: **"${trimmedInput.substring(0, 80)}${trimmedInput.length > 80 ? '...' : ''}"**\n\n` +
+            `I can help you with this in our **Product Info** knowledge base.\n\n` +
+            `👉 **[Click here to open Product Info](${productInfoUrl})** to get detailed information from our database and standards.\n\n` +
+            `_Alternatively, if you'd like to search for a specific product, please describe your requirements (e.g., "I need a pressure transmitter 0-100 PSI")._`
+          );
+
+          setState((prev) => ({ ...prev, isLoading: false }));
+          return;
+        }
+
+        // Handle out-of-domain queries with rejection message  
+        if (routingResult.target_workflow === 'out_of_domain') {
+          console.log('[WORKFLOW_ROUTING] Out-of-domain query detected');
+
+          const rejectMessage = routingResult.reject_message ||
+            "I'm EnGenie, your industrial automation assistant. I can help with instrument identification, product search, and standards compliance. Please ask a question related to industrial automation.";
+
+          await streamAssistantMessage(rejectMessage);
+          setState((prev) => ({ ...prev, isLoading: false }));
+          return;
+        }
 
         // Step 1: Classify user intent (with session ID for isolation)
         const intentResult: IntentClassificationResult = await classifyIntent(trimmedInput, searchSessionId);

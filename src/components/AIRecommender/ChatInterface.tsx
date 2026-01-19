@@ -102,7 +102,29 @@ const MessageRow = ({ message, isHistory, renderVendorAnalysisStatus, formatTime
             }}
           >
             <div>
-              <ReactMarkdown>{message.content}</ReactMarkdown>
+              <ReactMarkdown
+                components={{
+                  a: ({ href, children }) => (
+                    <a
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary underline hover:text-primary/80 font-medium"
+                      onClick={(e) => {
+                        // For internal links, use navigation instead of new tab
+                        if (href && href.startsWith('/')) {
+                          e.preventDefault();
+                          window.open(href, '_blank');
+                        }
+                      }}
+                    >
+                      {children}
+                    </a>
+                  )
+                }}
+              >
+                {message.content}
+              </ReactMarkdown>
             </div>
             {renderVendorAnalysisStatus(message)}
           </div>
@@ -407,9 +429,8 @@ const ChatInterface = ({
         <div className="p-2 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg mb-3">
           <div className="flex items-center justify-between text-xs">
             <div className="flex items-center space-x-2">
-              <div className={`w-1.5 h-1.5 rounded-full ${
-                agenticState.awaitingUserInput ? 'bg-yellow-400 animate-pulse' : 'bg-green-400'
-              }`} />
+              <div className={`w-1.5 h-1.5 rounded-full ${agenticState.awaitingUserInput ? 'bg-yellow-400 animate-pulse' : 'bg-green-400'
+                }`} />
               <span className="font-medium text-gray-700">
                 {agenticState.awaitingUserInput ? 'Awaiting Your Response' : 'Processing...'}
               </span>
@@ -510,13 +531,13 @@ const ChatInterface = ({
 
               {/* NEW: Render agentic checkpoint UI after assistant messages */}
               {message.type === "assistant" &&
-               workflowType === "agentic" &&
-               agenticState &&
-               index === messages.length - 1 && (
-                <div className="ml-14">
-                  {renderAgenticCheckpoint(agenticState.currentStep)}
-                </div>
-              )}
+                workflowType === "agentic" &&
+                agenticState &&
+                index === messages.length - 1 && (
+                  <div className="ml-14">
+                    {renderAgenticCheckpoint(agenticState.currentStep)}
+                  </div>
+                )}
             </div>
           ))
         )}

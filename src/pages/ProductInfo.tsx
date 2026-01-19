@@ -312,7 +312,7 @@ const ProductInfo = () => {
         loadState();
     }, [searchParams]);
 
-    // Query API
+    // Query API - defined first so it can be used by auto-submit
     const queryProductInfo = async (query: string): Promise<RAGResponse> => {
         try {
             const response = await axios.post("/api/product-info/query", {
@@ -332,6 +332,69 @@ const ProductInfo = () => {
             };
         }
     };
+
+    // Handle incoming query from URL parameter (from workflow routing)
+    // When ProductInfo opens with ?query=..., auto-submit that query
+    useEffect(() => {
+        const queryFromUrl = searchParams.get('query');
+        if (queryFromUrl && !hasAutoSubmitted && messages.length === 0) {
+            console.log('[PRODUCT_INFO] Auto-submitting query from URL:', queryFromUrl.substring(0, 50) + '...');
+            setHasAutoSubmitted(true);
+
+            // Define and execute auto-submit inline
+            const autoSubmit = async () => {
+                const userMessage: ChatMessage = {
+                    id: `user_${Date.now()}`,
+                    type: "user",
+                    content: queryFromUrl,
+                    timestamp: new Date()
+                };
+                setMessages(prev => [...prev, userMessage]);
+                setIsLoading(true);
+                setShowThinking(true);
+
+                try {
+                    const response = await queryProductInfo(queryFromUrl);
+                    setShowThinking(false);
+
+                    const assistantMessage: ChatMessage = {
+                        id: `assistant_${Date.now()}`,
+                        type: "assistant",
+                        content: response.answer,
+                        source: response.source,
+                        sourcesUsed: response.sourcesUsed,
+                        awaitingConfirmation: response.awaitingConfirmation,
+                        timestamp: new Date()
+                    };
+                    setMessages(prev => [...prev, assistantMessage]);
+
+                    if (response.source === "database") {
+                        toast({
+                            title: uiLabels.sourceDatabase,
+                            description: response.sourcesUsed?.join(", ") || "database",
+                        });
+                    } else if (response.source === "llm") {
+                        toast({
+                            title: uiLabels.sourceLlm,
+                            description: "AI knowledge",
+                        });
+                    }
+                } catch (error) {
+                    setShowThinking(false);
+                    toast({
+                        title: "Error",
+                        description: uiLabels.errorMessage,
+                        variant: "destructive",
+                    });
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            // Execute after short delay to ensure component is mounted
+            setTimeout(autoSubmit, 100);
+        }
+    }, [searchParams, hasAutoSubmitted, messages.length, sessionId, toast, uiLabels]);
 
     const submitQuery = async (query: string) => {
         const userMessage: ChatMessage = {
