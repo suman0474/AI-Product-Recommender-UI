@@ -200,7 +200,40 @@ function renderFlatFieldsList(
                 className="w-64 bg-popover p-2 rounded-md shadow-md border"
               >
                 <p className="text-sm whitespace-normal mt-1">
-                  {field.fieldDescriptions[field.fullKey] || "No description available"}
+                  {(() => {
+                    // Try multiple key variations to find description
+                    const descriptions = field.fieldDescriptions;
+                    const fullKey = field.fullKey;
+                    const leafKey = fullKey.split('.').pop() || fullKey;
+
+                    // Convert camelCase to snake_case for matching template keys
+                    const snakeCaseKey = leafKey.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase();
+
+                    // Try different key formats
+                    const desc = descriptions[fullKey]
+                      || descriptions[leafKey]
+                      || descriptions[snakeCaseKey]
+                      || descriptions[leafKey.toLowerCase()]
+                      || descriptions[snakeCaseKey.replace(/_/g, '')]
+                      // Try finding by partial match
+                      || Object.entries(descriptions).find(([k]) =>
+                        k.toLowerCase().includes(leafKey.toLowerCase()) ||
+                        leafKey.toLowerCase().includes(k.toLowerCase().replace(/_/g, ''))
+                      )?.[1]
+                      || null;
+
+                    // If still no description, generate one from the field name
+                    if (!desc) {
+                      const words = leafKey
+                        .replace(/([a-z])([A-Z])/g, '$1 $2')
+                        .replace(/[_-]/g, ' ')
+                        .split(' ')
+                        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+                        .join(' ');
+                      return `Specification for ${words}`;
+                    }
+                    return desc;
+                  })()}
                 </p>
               </TooltipContent>
             </Tooltip>
@@ -208,21 +241,14 @@ function renderFlatFieldsList(
 
           {(() => {
             // Determine the actual display value
-            let displayValue: string;
-            if (field.isFilled) {
-              displayValue = field.displayValue;
-            } else if (field.fieldDescriptions[field.fullKey] &&
-              !field.fieldDescriptions[field.fullKey].toLowerCase().startsWith("specification for")) {
-              displayValue = field.fieldDescriptions[field.fullKey];
-            } else {
-              displayValue = "Not specified";
-            }
+            // When field is filled, show the actual value
+            // When field is empty, show "Not specified" (descriptions are in tooltips)
+            const displayValue = field.isFilled ? field.displayValue : "Not specified";
 
             // Check if the value is meaningful (not empty or "Not specified")
-            const isValueMeaningful = displayValue &&
+            const isValueMeaningful = field.isFilled &&
               displayValue.trim() !== "" &&
-              displayValue.toLowerCase() !== "not specified" &&
-              !displayValue.toLowerCase().startsWith("specification for");
+              displayValue.toLowerCase() !== "not specified";
 
             return (
               <span className={`break-words ${isValueMeaningful ? "text-green-700 font-mono" : "text-red-500 font-mono"}`}>

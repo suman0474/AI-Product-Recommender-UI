@@ -35,6 +35,7 @@ import {
   identifyInstruments,
   callAgenticProductSearch,
   resumeProductSearch,
+  BASE_URL,
 } from "./api";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -783,6 +784,55 @@ const AIRecommender = ({
         console.log(`[IMAGE_FETCH] No products to fetch images for (displayMode: ${displayMode})`);
       }
 
+      // =====================================================================
+      // FALLBACK: Fetch generic images for products still missing top_image
+      // This is the frontend fallback layer with cross-verification
+      // =====================================================================
+      try {
+        const productsNeedingImages = analysis.overallRanking.rankedProducts.filter(
+          (p: any) => !p.top_image?.url && !p.topImage?.url
+        );
+
+        if (productsNeedingImages.length > 0) {
+          console.log(`[IMAGE_FALLBACK] ${productsNeedingImages.length} products need generic images`);
+
+          // Fetch generic images sequentially for missing products (max 10 to avoid rate limits)
+          for (const product of productsNeedingImages.slice(0, 10)) {
+            const productType = (product as any).productType || (product as any).product_type || state.productType;
+            if (!productType) continue;
+
+            // Cross-verification: Skip if image was added by another process
+            if ((product as any).top_image?.url || (product as any).topImage?.url) continue;
+
+            try {
+              const encodedType = encodeURIComponent(productType);
+              const response = await fetch(`${BASE_URL}/api/generic_image/${encodedType}`, {
+                credentials: 'include'
+              });
+
+              if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.image?.url) {
+                  (product as any).top_image = {
+                    url: data.image.url,
+                    source: 'frontend_fallback',
+                    product_type: productType
+                  };
+                  console.log(`[IMAGE_FALLBACK] ✓ Generic image loaded for ${product.productName}`);
+                }
+              }
+            } catch (imgErr) {
+              console.warn(`[IMAGE_FALLBACK] Failed to fetch generic image for ${productType}`);
+            }
+          }
+        } else {
+          console.log(`[IMAGE_FALLBACK] All products have images, no fallback needed`);
+        }
+      } catch (fallbackErr) {
+        console.warn(`[IMAGE_FALLBACK] Fallback image fetch failed:`, fallbackErr);
+      }
+
+
 
       // Let the Sales Agent compute the accurate product count message from analysisResult
       const contextMessage = `Analysis complete.`;
@@ -1393,6 +1443,7 @@ const AIRecommender = ({
               const flatRequirements = flattenRequirements(validationResult.providedRequirements);
               const mergedData = mergeRequirementsWithSchema(flatRequirements, schema);
 
+
               // STEP 3: Update state with validation results
               setCollectedData(mergedData);
               setState((prev) => ({
@@ -1408,6 +1459,13 @@ const AIRecommender = ({
                   } : undefined
                 },
               }));
+
+              // STEP 3.5: Use field descriptions from validation result for on-hover tooltips
+              // This avoids separate API calls as descriptions are now included in the validation response
+              if (validationResult.fieldDescriptions && Object.keys(validationResult.fieldDescriptions).length > 0) {
+                console.log(`[${searchSessionId}] [VALIDATION] Setting ${Object.keys(validationResult.fieldDescriptions).length} field descriptions for tooltips`);
+                setFieldDescriptions(validationResult.fieldDescriptions);
+              }
 
               // STEP 4: Display AI-generated response
               await streamAssistantMessage(salesAgentResponse.content);
@@ -1488,6 +1546,12 @@ const AIRecommender = ({
                     originalInput: combinedInput
                   },
                 }));
+
+                // Update field descriptions from re-validation result for on-hover tooltips
+                if (revalidationResult.fieldDescriptions && Object.keys(revalidationResult.fieldDescriptions).length > 0) {
+                  console.log(`[${searchSessionId}] [MISSING_INFO] Updating ${Object.keys(revalidationResult.fieldDescriptions).length} field descriptions`);
+                  setFieldDescriptions(revalidationResult.fieldDescriptions);
+                }
 
                 // Check if still missing fields
                 if (revalidationResult.missingFields && revalidationResult.missingFields.length > 0) {
@@ -1856,6 +1920,12 @@ const AIRecommender = ({
                       } : undefined
                     }
                   }));
+
+                  // Update field descriptions from re-validation for on-hover tooltips
+                  if (revalidationResult.fieldDescriptions && Object.keys(revalidationResult.fieldDescriptions).length > 0) {
+                    console.log(`[${searchSessionId}] [REVALIDATION] Updating ${Object.keys(revalidationResult.fieldDescriptions).length} field descriptions`);
+                    setFieldDescriptions(revalidationResult.fieldDescriptions);
+                  }
 
                   // STEP 3: Display AI-generated response
                   await streamAssistantMessage(salesAgentResponse.content);
