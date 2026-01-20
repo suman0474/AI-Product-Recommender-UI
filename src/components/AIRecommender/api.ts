@@ -1320,8 +1320,8 @@ export const callEnGenieChat = async (
       payload.session_id = sessionId;
     }
 
-    // Use the correct endpoint: /api/product-info/query
-    const response = await axios.post('/api/product-info/query', payload);
+    // Use the correct endpoint: /api/engenie-chat/query
+    const response = await axios.post('/api/engenie-chat/query', payload);
     const result = response.data;
 
     console.log('[ENGENIE_CHAT] Response received:', {

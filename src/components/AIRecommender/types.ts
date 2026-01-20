@@ -144,7 +144,7 @@ export interface IntentClassificationResult {
  */
 export interface WorkflowRoutingResult {
   query: string;
-  target_workflow: "solution" | "instrument_identifier" | "product_info" | "out_of_domain";
+  target_workflow: "solution" | "instrument_identifier" | "engenie_chat" | "out_of_domain";
   intent: string;
   confidence: number;
   reasoning: string;

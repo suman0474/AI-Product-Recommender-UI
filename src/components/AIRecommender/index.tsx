@@ -1309,12 +1309,12 @@ const AIRecommender = ({
           confidence: routingResult.confidence
         });
 
-        // Route to ProductInfo page for chat-based queries (questions, greetings, product info)
-        if (routingResult.target_workflow === 'product_info') {
-          console.log('[WORKFLOW_ROUTING] Routing to ProductInfo page for chat-based query');
+        // Route to EnGenie Chat page for chat-based queries (questions, greetings, product info)
+        if (routingResult.target_workflow === 'engenie_chat') {
+          console.log('[WORKFLOW_ROUTING] Routing to EnGenie Chat page for chat-based query');
 
           // Create a link for the user to click - will open in NEW WINDOW
-          const productInfoUrl = `/product-info?query=${encodeURIComponent(trimmedInput)}`;
+          const productInfoUrl = `/engenie-chat?query=${encodeURIComponent(trimmedInput)}`;
           const fullUrl = `${window.location.origin}${productInfoUrl}`;
 
           // Show a message with a clickable link that opens in a new window

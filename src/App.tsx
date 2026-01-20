@@ -10,7 +10,7 @@ import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import AdminDashboard from "./pages/AdminDashboard";  // Import your admin dashboard
 import Project from "./pages/Project";
-import ProductInfo from "./pages/ProductInfo";  // Product Info page
+import EnGenieChat from "./pages/EnGenieChat";  // EnGenie Chat page
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import React from "react";
 import Uploading from "./pages/Uploading";
@@ -65,12 +65,12 @@ const App = () => (
               }
             />
 
-            {/* Protected Product Info route */}
+            {/* Protected EnGenie Chat route */}
             <Route
-              path="/product-info"
+              path="/engenie-chat"
               element={
                 <ProtectedRoute>
-                  <ProductInfo />
+                  <EnGenieChat />
                 </ProtectedRoute>
               }
             />

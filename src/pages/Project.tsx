@@ -470,12 +470,11 @@ const Project = () => {
 
             // CASE 2.5: Workflow Suggestion - Show clickable option to open EnGenie Chat in new window
             if (responseType === 'workflowSuggestion') {
-                const suggestion = response.suggestWorkflow;
-                console.log('[WORKFLOW_SUGGESTION] Displaying suggestion:', suggestion);
-
-                // Create the URL for EnGenie Chat with the query
+                if (response.suggestWorkflow?.workflow_id === 'engenie_chat') {
+                    console.log('[PROJECT] User asked a general question -> EnGenie Chat');
+                }
                 const queryEncoded = encodeURIComponent(finalRequirements);
-                const enGenieChatUrl = `${window.location.origin}/product-info?query=${queryEncoded}`;
+                const enGenieChatUrl = `${window.location.origin}/engenie-chat?query=${queryEncoded}`;
 
                 // Show message with action button that opens in new window
                 addChatMessage(

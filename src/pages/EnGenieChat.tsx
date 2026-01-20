@@ -147,48 +147,48 @@ const DEFAULT_UI_LABELS: UILabels = {
 };
 
 // IndexedDB for state persistence
-const PRODUCT_INFO_DB_NAME = 'product_info_db';
-const PRODUCT_INFO_STORE_NAME = 'product_info_state';
-const PRODUCT_INFO_STATE_KEY = 'current_session';
-const PRODUCT_INFO_BACKUP_KEY = 'product_info_state_backup';
+const ENGENIE_CHAT_DB_NAME = 'engenie_chat_db';
+const ENGENIE_CHAT_STORE_NAME = 'engenie_chat_state';
+const ENGENIE_CHAT_STATE_KEY = 'current_session';
+const ENGENIE_CHAT_BACKUP_KEY = 'engenie_chat_state_backup';
 
-const openProductInfoDB = (): Promise<IDBDatabase> => {
+const openEnGenieChatDB = (): Promise<IDBDatabase> => {
     return new Promise((resolve, reject) => {
-        const request = indexedDB.open(PRODUCT_INFO_DB_NAME, 1);
+        const request = indexedDB.open(ENGENIE_CHAT_DB_NAME, 1);
         request.onerror = () => reject(request.error);
         request.onsuccess = () => resolve(request.result);
         request.onupgradeneeded = (event) => {
             const db = (event.target as IDBOpenDBRequest).result;
-            if (!db.objectStoreNames.contains(PRODUCT_INFO_STORE_NAME)) {
-                db.createObjectStore(PRODUCT_INFO_STORE_NAME, { keyPath: 'id' });
+            if (!db.objectStoreNames.contains(ENGENIE_CHAT_STORE_NAME)) {
+                db.createObjectStore(ENGENIE_CHAT_STORE_NAME, { keyPath: 'id' });
             }
         };
     });
 };
 
-const saveStateToProductInfoDB = async (state: any): Promise<void> => {
+const saveStateToEnGenieChatDB = async (state: any): Promise<void> => {
     try {
-        const db = await openProductInfoDB();
-        const transaction = db.transaction(PRODUCT_INFO_STORE_NAME, 'readwrite');
-        const store = transaction.objectStore(PRODUCT_INFO_STORE_NAME);
+        const db = await openEnGenieChatDB();
+        const transaction = db.transaction(ENGENIE_CHAT_STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(ENGENIE_CHAT_STORE_NAME);
         await new Promise<void>((resolve, reject) => {
-            const request = store.put({ id: PRODUCT_INFO_STATE_KEY, ...state });
+            const request = store.put({ id: ENGENIE_CHAT_STATE_KEY, ...state });
             request.onsuccess = () => resolve();
             request.onerror = () => reject(request.error);
         });
         db.close();
     } catch (e) {
-        console.warn('[PRODUCT_INFO] Failed to save to IndexedDB:', e);
+        console.warn('[ENGENIE_CHAT] Failed to save to IndexedDB:', e);
     }
 };
 
-const loadStateFromProductInfoDB = async (): Promise<any | null> => {
+const loadStateFromEnGenieChatDB = async (): Promise<any | null> => {
     try {
-        const db = await openProductInfoDB();
-        const transaction = db.transaction(PRODUCT_INFO_STORE_NAME, 'readonly');
-        const store = transaction.objectStore(PRODUCT_INFO_STORE_NAME);
+        const db = await openEnGenieChatDB();
+        const transaction = db.transaction(ENGENIE_CHAT_STORE_NAME, 'readonly');
+        const store = transaction.objectStore(ENGENIE_CHAT_STORE_NAME);
         const result = await new Promise<any>((resolve, reject) => {
-            const request = store.get(PRODUCT_INFO_STATE_KEY);
+            const request = store.get(ENGENIE_CHAT_STATE_KEY);
             request.onsuccess = () => resolve(request.result);
             request.onerror = () => reject(request.error);
         });
@@ -201,29 +201,29 @@ const loadStateFromProductInfoDB = async (): Promise<any | null> => {
         }
         return result || null;
     } catch (e) {
-        console.warn('[PRODUCT_INFO] Failed to load from IndexedDB:', e);
+        console.warn('[ENGENIE_CHAT] Failed to load from IndexedDB:', e);
         return null;
     }
 };
 
-const clearProductInfoDBState = async (): Promise<void> => {
+const clearEnGenieChatDBState = async (): Promise<void> => {
     try {
-        const db = await openProductInfoDB();
-        const transaction = db.transaction(PRODUCT_INFO_STORE_NAME, 'readwrite');
-        const store = transaction.objectStore(PRODUCT_INFO_STORE_NAME);
+        const db = await openEnGenieChatDB();
+        const transaction = db.transaction(ENGENIE_CHAT_STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(ENGENIE_CHAT_STORE_NAME);
         await new Promise<void>((resolve, reject) => {
-            const request = store.delete(PRODUCT_INFO_STATE_KEY);
+            const request = store.delete(ENGENIE_CHAT_STATE_KEY);
             request.onsuccess = () => resolve();
             request.onerror = () => reject(request.error);
         });
         db.close();
-        localStorage.removeItem(PRODUCT_INFO_BACKUP_KEY);
+        localStorage.removeItem(ENGENIE_CHAT_BACKUP_KEY);
     } catch (e) {
-        console.warn('[PRODUCT_INFO] Failed to clear IndexedDB:', e);
+        console.warn('[ENGENIE_CHAT] Failed to clear IndexedDB:', e);
     }
 };
 
-const ProductInfo = () => {
+const EnGenieChat = () => {
     const { toast } = useToast();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
@@ -233,7 +233,7 @@ const ProductInfo = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [showThinking, setShowThinking] = useState(false);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
-    const [sessionId, setSessionId] = useState(() => `product_info_${Date.now()}`);
+    const [sessionId, setSessionId] = useState(() => `engenie_chat_${Date.now()}`);
     const [hasAutoSubmitted, setHasAutoSubmitted] = useState(false);
     const [isHistory, setIsHistory] = useState(false);
     const [uiLabels] = useState<UILabels>(DEFAULT_UI_LABELS);
@@ -275,9 +275,9 @@ const ProductInfo = () => {
                 savedAt: new Date().toISOString()
             };
             try {
-                localStorage.setItem(PRODUCT_INFO_BACKUP_KEY, JSON.stringify(stateToSave));
+                localStorage.setItem(ENGENIE_CHAT_BACKUP_KEY, JSON.stringify(stateToSave));
             } catch (e) { }
-            saveStateToProductInfoDB(stateToSave);
+            saveStateToEnGenieChatDB(stateToSave);
         };
         window.addEventListener('beforeunload', handleBeforeUnload);
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
@@ -295,22 +295,22 @@ const ProductInfo = () => {
         // If there's a query parameter, this is a NEW session - don't load old state
         const queryFromUrl = searchParams.get('query');
         if (queryFromUrl) {
-            console.log('[PRODUCT_INFO] New session with query - starting fresh');
+            console.log('[ENGENIE_CHAT] New session with query - starting fresh');
             // Generate new session ID for this fresh conversation
-            setSessionId(`product_info_${Date.now()}`);
+            setSessionId(`engenie_chat_${Date.now()}`);
             // Clear any old state
-            clearProductInfoDBState();
-            localStorage.removeItem(PRODUCT_INFO_BACKUP_KEY);
+            clearEnGenieChatDBState();
+            localStorage.removeItem(ENGENIE_CHAT_BACKUP_KEY);
             return;
         }
 
         // Check if we should load a specific saved session
         const savedSessionId = searchParams.get('sessionId');
         if (savedSessionId) {
-            console.log('[PRODUCT_INFO] Loading specific saved session:', savedSessionId);
+            console.log('[ENGENIE_CHAT] Loading specific saved session:', savedSessionId);
             const loadSavedSession = async () => {
                 try {
-                    const restoredState = await loadStateFromProductInfoDB();
+                    const restoredState = await loadStateFromEnGenieChatDB();
                     if (restoredState?.sessionId === savedSessionId && restoredState?.messages?.length > 0) {
                         const restoredMessages = restoredState.messages.map((msg: any) => ({
                             ...msg,
@@ -320,12 +320,12 @@ const ProductInfo = () => {
                         setSessionId(savedSessionId);
                         setHasAutoSubmitted(true);
                         setIsHistory(true);
-                        console.log('[PRODUCT_INFO] Restored saved session with', restoredMessages.length, 'messages');
+                        console.log('[ENGENIE_CHAT] Restored saved session with', restoredMessages.length, 'messages');
                     } else {
-                        console.log('[PRODUCT_INFO] Saved session not found, starting fresh');
+                        console.log('[ENGENIE_CHAT] Saved session not found, starting fresh');
                     }
                 } catch (e) {
-                    console.error('[PRODUCT_INFO] Failed to load saved session:', e);
+                    console.error('[ENGENIE_CHAT] Failed to load saved session:', e);
                 }
             };
             loadSavedSession();
@@ -333,21 +333,21 @@ const ProductInfo = () => {
         }
 
         // No query and no sessionId - start completely fresh
-        console.log('[PRODUCT_INFO] Opening fresh - starting new session');
-        setSessionId(`product_info_${Date.now()}`);
+        console.log('[ENGENIE_CHAT] Opening fresh - starting new session');
+        setSessionId(`engenie_chat_${Date.now()}`);
         setMessages([]);
         setHasAutoSubmitted(false);
         setIsHistory(false);
 
         // Optionally clear old state to prevent buildup
-        clearProductInfoDBState();
-        localStorage.removeItem(PRODUCT_INFO_BACKUP_KEY);
+        clearEnGenieChatDBState();
+        localStorage.removeItem(ENGENIE_CHAT_BACKUP_KEY);
     }, [searchParams]);
 
     // Query API - defined first so it can be used by auto-submit
-    const queryProductInfo = async (query: string): Promise<RAGResponse> => {
+    const queryEnGenieChat = async (query: string): Promise<RAGResponse> => {
         try {
-            const response = await axios.post("/api/product-info/query", {
+            const response = await axios.post("/api/engenie-chat/query", {
                 query,
                 session_id: sessionId
             }, { withCredentials: true });
@@ -366,11 +366,11 @@ const ProductInfo = () => {
     };
 
     // Handle incoming query from URL parameter (from workflow routing)
-    // When ProductInfo opens with ?query=..., auto-submit that query
+    // When EnGenieChat opens with ?query=..., auto-submit that query
     useEffect(() => {
         const queryFromUrl = searchParams.get('query');
         if (queryFromUrl && !hasAutoSubmitted && messages.length === 0) {
-            console.log('[PRODUCT_INFO] Auto-submitting query from URL:', queryFromUrl.substring(0, 50) + '...');
+            console.log('[ENGENIE_CHAT] Auto-submitting query from URL:', queryFromUrl.substring(0, 50) + '...');
             setHasAutoSubmitted(true);
 
             // Define and execute auto-submit inline
@@ -386,7 +386,7 @@ const ProductInfo = () => {
                 setShowThinking(true);
 
                 try {
-                    const response = await queryProductInfo(queryFromUrl);
+                    const response = await queryEnGenieChat(queryFromUrl);
                     setShowThinking(false);
 
                     const assistantMessage: ChatMessage = {
@@ -441,7 +441,7 @@ const ProductInfo = () => {
         setShowThinking(true);
 
         try {
-            const response = await queryProductInfo(query);
+            const response = await queryEnGenieChat(query);
             setShowThinking(false);
 
             const assistantMessage: ChatMessage = {
@@ -506,9 +506,9 @@ const ProductInfo = () => {
     };
 
     const handleNewSession = async () => {
-        await clearProductInfoDBState();
+        await clearEnGenieChatDBState();
         setMessages([]);
-        setSessionId(`product_info_${Date.now()}`);
+        setSessionId(`engenie_chat_${Date.now()}`);
         setHasAutoSubmitted(false);
         setIsHistory(false);
         toast({ title: "New Session", description: "Started fresh session" });
@@ -524,7 +524,7 @@ const ProductInfo = () => {
                     <div className="flex items-center gap-2">
                         <img src="/icon-engenie.png" alt="EnGenie" className="w-12 h-12 object-contain" />
                         <h1 className="text-2xl font-bold text-[#0f172a]">
-                            EnGenie <span className="text-lg font-medium text-muted-foreground">(Product Info)</span>
+                            EnGenie <span className="text-lg font-medium text-muted-foreground">(Chat)</span>
                         </h1>
                     </div>
                     <div className="flex items-center gap-2">
@@ -563,7 +563,7 @@ const ProductInfo = () => {
                 {messages.length === 0 && (
                     <div className="flex flex-col items-center justify-center h-full text-center">
                         <img src="/icon-engenie.png" alt="EnGenie" className="w-24 h-24 mb-4 opacity-50" />
-                        <h2 className="text-xl font-semibold text-muted-foreground mb-2">Welcome to Product Info</h2>
+                        <h2 className="text-xl font-semibold text-muted-foreground mb-2">Welcome to EnGenie Chat</h2>
                         <p className="text-muted-foreground max-w-md">
                             Ask me about products, specifications, vendors, or any industrial instrumentation questions.
                         </p>
@@ -645,4 +645,5 @@ const ProductInfo = () => {
     );
 };
 
-export default ProductInfo;
+export default EnGenieChat;
+
