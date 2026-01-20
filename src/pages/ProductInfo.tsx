@@ -284,32 +284,64 @@ const ProductInfo = () => {
     }, []);
 
     // Load state on mount
+    // FRESH SESSION BY DEFAULT:
+    // - Opening with ?query= starts a fresh session (new conversation)
+    // - Opening with ?sessionId= loads that specific saved session
+    // - Opening without parameters starts fresh
     useEffect(() => {
+        // If coming from a project, skip this
         if (searchParams.get('projectId')) return;
-        const loadState = async () => {
-            if (sessionStorage.getItem('clear_product_info_state') === 'true') {
-                sessionStorage.removeItem('clear_product_info_state');
-                await clearProductInfoDBState();
-                return;
-            }
-            try {
-                let restoredState: any = null;
-                const backup = localStorage.getItem(PRODUCT_INFO_BACKUP_KEY);
-                if (backup) restoredState = JSON.parse(backup);
-                if (!restoredState) restoredState = await loadStateFromProductInfoDB();
-                if (restoredState?.messages?.length > 0) {
-                    const restoredMessages = restoredState.messages.map((msg: any) => ({
-                        ...msg,
-                        timestamp: msg.timestamp ? new Date(msg.timestamp) : undefined
-                    }));
-                    setMessages(restoredMessages);
-                    if (restoredState.sessionId) setSessionId(restoredState.sessionId);
-                    setHasAutoSubmitted(true);
-                    setIsHistory(true);
+
+        // If there's a query parameter, this is a NEW session - don't load old state
+        const queryFromUrl = searchParams.get('query');
+        if (queryFromUrl) {
+            console.log('[PRODUCT_INFO] New session with query - starting fresh');
+            // Generate new session ID for this fresh conversation
+            setSessionId(`product_info_${Date.now()}`);
+            // Clear any old state
+            clearProductInfoDBState();
+            localStorage.removeItem(PRODUCT_INFO_BACKUP_KEY);
+            return;
+        }
+
+        // Check if we should load a specific saved session
+        const savedSessionId = searchParams.get('sessionId');
+        if (savedSessionId) {
+            console.log('[PRODUCT_INFO] Loading specific saved session:', savedSessionId);
+            const loadSavedSession = async () => {
+                try {
+                    const restoredState = await loadStateFromProductInfoDB();
+                    if (restoredState?.sessionId === savedSessionId && restoredState?.messages?.length > 0) {
+                        const restoredMessages = restoredState.messages.map((msg: any) => ({
+                            ...msg,
+                            timestamp: msg.timestamp ? new Date(msg.timestamp) : undefined
+                        }));
+                        setMessages(restoredMessages);
+                        setSessionId(savedSessionId);
+                        setHasAutoSubmitted(true);
+                        setIsHistory(true);
+                        console.log('[PRODUCT_INFO] Restored saved session with', restoredMessages.length, 'messages');
+                    } else {
+                        console.log('[PRODUCT_INFO] Saved session not found, starting fresh');
+                    }
+                } catch (e) {
+                    console.error('[PRODUCT_INFO] Failed to load saved session:', e);
                 }
-            } catch (e) { }
-        };
-        loadState();
+            };
+            loadSavedSession();
+            return;
+        }
+
+        // No query and no sessionId - start completely fresh
+        console.log('[PRODUCT_INFO] Opening fresh - starting new session');
+        setSessionId(`product_info_${Date.now()}`);
+        setMessages([]);
+        setHasAutoSubmitted(false);
+        setIsHistory(false);
+
+        // Optionally clear old state to prevent buildup
+        clearProductInfoDBState();
+        localStorage.removeItem(PRODUCT_INFO_BACKUP_KEY);
     }, [searchParams]);
 
     // Query API - defined first so it can be used by auto-submit

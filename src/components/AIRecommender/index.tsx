@@ -1313,14 +1313,15 @@ const AIRecommender = ({
         if (routingResult.target_workflow === 'product_info') {
           console.log('[WORKFLOW_ROUTING] Routing to ProductInfo page for chat-based query');
 
-          // Create a link for the user to click (instead of auto-opening)
+          // Create a link for the user to click - will open in NEW WINDOW
           const productInfoUrl = `/product-info?query=${encodeURIComponent(trimmedInput)}`;
+          const fullUrl = `${window.location.origin}${productInfoUrl}`;
 
-          // Show a message with a clickable link to open ProductInfo
+          // Show a message with a clickable link that opens in a new window
           await streamAssistantMessage(
             `This looks like a knowledge question about: **"${trimmedInput.substring(0, 80)}${trimmedInput.length > 80 ? '...' : ''}"**\n\n` +
-            `I can help you with this in our **Product Info** knowledge base.\n\n` +
-            `👉 **[Click here to open Product Info](${productInfoUrl})** to get detailed information from our database and standards.\n\n` +
+            `I can help you with this in our **EnGenie Chat** knowledge base.\n\n` +
+            `👉 **[Click here to open EnGenie Chat in a new window](javascript:window.open('${fullUrl}', '_blank', 'width=1200,height=800'))** to get detailed information from our database and standards.\n\n` +
             `_Alternatively, if you'd like to search for a specific product, please describe your requirements (e.g., "I need a pressure transmitter 0-100 PSI")._`
           );
 

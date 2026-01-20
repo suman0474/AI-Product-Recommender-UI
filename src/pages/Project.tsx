@@ -56,12 +56,21 @@ interface IdentifiedAccessory {
     sampleInput: string;
 }
 
+// Action button interface for chat messages
+interface ChatActionButton {
+    label: string;
+    action: 'openNewWindow' | 'navigate' | 'custom';
+    url?: string;
+    icon?: string;
+}
+
 // Chat message interface for Project page
 interface ProjectChatMessage {
     id: string;
     type: 'user' | 'assistant';
     content: string;
     timestamp: Date;
+    actionButtons?: ChatActionButton[];  // Optional action buttons
 }
 
 // MessageRow component with animations (same as Dashboard)
@@ -91,6 +100,15 @@ const MessageRow = ({ message, isHistory }: MessageRowProps) => {
         }
     };
 
+    // Handler for action buttons
+    const handleActionClick = (action: ChatActionButton) => {
+        if (action.action === 'openNewWindow' && action.url) {
+            window.open(action.url, '_blank', 'width=1200,height=800,scrollbars=yes,resizable=yes');
+        } else if (action.action === 'navigate' && action.url) {
+            window.location.href = action.url;
+        }
+    };
+
     return (
         <div className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-[80%] flex items-start space-x-2 ${message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
@@ -114,6 +132,26 @@ const MessageRow = ({ message, isHistory }: MessageRowProps) => {
                         <div>
                             <ReactMarkdown>{message.content}</ReactMarkdown>
                         </div>
+
+                        {/* Render action buttons if present */}
+                        {message.actionButtons && message.actionButtons.length > 0 && (
+                            <div className="mt-4 flex flex-wrap gap-2">
+                                {message.actionButtons.map((btn, idx) => (
+                                    <button
+                                        key={idx}
+                                        onClick={() => handleActionClick(btn)}
+                                        className="px-4 py-2.5 rounded-lg font-semibold text-white text-sm transition-all duration-300 hover:scale-105 hover:shadow-lg active:scale-95 flex items-center gap-2"
+                                        style={{
+                                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                            boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)'
+                                        }}
+                                    >
+                                        {btn.icon && <span>{btn.icon}</span>}
+                                        {btn.label}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
                     <p
                         className={`text-xs text-muted-foreground mt-1 px-1 ${message.type === 'user' ? 'text-right' : ''}`}
@@ -197,13 +235,14 @@ const Project = () => {
         }
     }, [isLoading]);
 
-    // Helper to add a message to chat
-    const addChatMessage = (type: 'user' | 'assistant', content: string) => {
+    // Helper to add a message to chat (with optional action buttons)
+    const addChatMessage = (type: 'user' | 'assistant', content: string, actionButtons?: ChatActionButton[]) => {
         const newMessage: ProjectChatMessage = {
             id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
             type,
             content,
-            timestamp: new Date()
+            timestamp: new Date(),
+            actionButtons
         };
         setChatMessages(prev => [...prev, newMessage]);
     };
@@ -426,6 +465,33 @@ const Project = () => {
                     setInstruments([]);
                     setAccessories([]);
                 }
+                return;
+            }
+
+            // CASE 2.5: Workflow Suggestion - Show clickable option to open EnGenie Chat in new window
+            if (responseType === 'workflowSuggestion') {
+                const suggestion = response.suggestWorkflow;
+                console.log('[WORKFLOW_SUGGESTION] Displaying suggestion:', suggestion);
+
+                // Create the URL for EnGenie Chat with the query
+                const queryEncoded = encodeURIComponent(finalRequirements);
+                const enGenieChatUrl = `${window.location.origin}/product-info?query=${queryEncoded}`;
+
+                // Show message with action button that opens in new window
+                addChatMessage(
+                    'assistant',
+                    response.message || 'This looks like a knowledge question. Click the button below to get detailed answers from our knowledge base.',
+                    [
+                        {
+                            label: '🚀 Open EnGenie Chat',
+                            action: 'openNewWindow',
+                            url: enGenieChatUrl,
+                            icon: '💬'
+                        }
+                    ]
+                );
+
+                setShowResults(true);
                 return;
             }
 
