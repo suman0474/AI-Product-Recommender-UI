@@ -213,6 +213,10 @@ export interface IdentifiedInstrument {
   productName: string;
   specifications: Record<string, string>;
   sampleInput: string;
+  // Thread context for resuming workflow (backend-provided)
+  item_thread_id: string;
+  workflow_thread_id: string;
+  main_thread_id: string;
 }
 
 export interface IdentifiedAccessory {
@@ -221,6 +225,10 @@ export interface IdentifiedAccessory {
   accessoryName: string;
   specifications: Record<string, string>;
   sampleInput: string;
+  // Thread context for resuming workflow (backend-provided)
+  item_thread_id: string;
+  workflow_thread_id: string;
+  main_thread_id: string;
 }
 
 export interface InstrumentIdentificationResult {

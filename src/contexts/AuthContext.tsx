@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { checkAuth, login as apiLogin, logout as apiLogout, signup as apiSignup } from '../components/AIRecommender/api';
 import { UserCredentials } from '../components/AIRecommender/types';
 import { useToast } from '../hooks/use-toast';
+import { getSessionManager } from '../services/SessionManager';
 
 // UPDATED User interface to include role and status
 interface User {
@@ -57,6 +58,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (authData) {
         // Type cast to the new User interface
         setUser(authData.user as User);
+
+        // Ensure thread session exists for authenticated user
+        const sessionManager = getSessionManager();
+        if (!sessionManager.getCurrentSession()) {
+          sessionManager.createSession(authData.user.username || authData.user.email);
+          console.log('[AUTH] Thread session restored for authenticated user');
+        }
       }
     } catch (error) {
       setIsAuthenticated(false);
@@ -81,6 +89,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setIsAuthenticated(true);
       // Set the user with the new role and status
       setUser(response.user as User);
+
+      // Create thread session for UI-managed thread system
+      const sessionManager = getSessionManager();
+      sessionManager.createSession(response.user.username || response.user.email);
+      console.log('[AUTH] Thread session created for user:', response.user.username);
+
       toast({
         title: "Success",
         description: "Successfully logged in!",
@@ -134,6 +148,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       await apiLogout();
       setIsAuthenticated(false);
       setUser(null);
+
+      // End thread session (clears if not saved)
+      const sessionManager = getSessionManager();
+      sessionManager.endSession();
+      console.log('[AUTH] Thread session ended');
+
       toast({
         title: "Success",
         description: "Successfully logged out!",

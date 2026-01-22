@@ -103,7 +103,8 @@ const MessageRow = ({ message, isHistory }: MessageRowProps) => {
     // Handler for action buttons
     const handleActionClick = (action: ChatActionButton) => {
         if (action.action === 'openNewWindow' && action.url) {
-            window.open(action.url, '_blank', 'width=1200,height=800,scrollbars=yes,resizable=yes');
+            // Open in a new tab in the same browser window (not a popup)
+            window.open(action.url, '_blank');
         } else if (action.action === 'navigate' && action.url) {
             window.location.href = action.url;
         }
@@ -176,7 +177,7 @@ const Project = () => {
     const [showResults, setShowResults] = useState(false);
     const [activeTab, setActiveTab] = useState<string>('project');
     const [previousTab, setPreviousTab] = useState<string>('project');
-    const [searchTabs, setSearchTabs] = useState<{ id: string; title: string; input: string; isDirectSearch?: boolean; productType?: string }[]>([]);
+    const [searchTabs, setSearchTabs] = useState<{ id: string; title: string; input: string; isDirectSearch?: boolean; productType?: string; itemThreadId?: string; workflowThreadId?: string; mainThreadId?: string }[]>([]);
     const [projectName, setProjectName] = useState<string>('Project');
     const [editingProjectName, setEditingProjectName] = useState<boolean>(false);
     const [editProjectNameValue, setEditProjectNameValue] = useState<string>(projectName);
@@ -651,7 +652,15 @@ const Project = () => {
         }
     };
 
-    const addSearchTab = (input: string, categoryName?: string, isDirectSearch: boolean = false, productType?: string) => {
+    const addSearchTab = (
+        input: string,
+        categoryName?: string,
+        isDirectSearch: boolean = false,
+        productType?: string,
+        itemThreadId?: string,
+        workflowThreadId?: string,
+        mainThreadId?: string
+    ) => {
         // Save current scroll position before switching tabs
         if (activeTab === 'project' && projectScrollRef.current) {
             setSavedScrollPosition(projectScrollRef.current.scrollTop);
@@ -667,7 +676,10 @@ const Project = () => {
                 ...updatedTabs[existingTabIndex],
                 input,
                 isDirectSearch,
-                productType
+                productType,
+                itemThreadId,
+                workflowThreadId,
+                mainThreadId
             };
             setSearchTabs(updatedTabs);
 
@@ -681,7 +693,19 @@ const Project = () => {
 
         const nextIndex = searchTabs.length + 1;
         const id = `search-${Date.now()}-${nextIndex}`;
-        const newTabs = [...searchTabs, { id, title, input, isDirectSearch, productType }];
+        const newTabs = [
+            ...searchTabs,
+            {
+                id,
+                title,
+                input,
+                isDirectSearch,
+                productType,
+                itemThreadId,
+                workflowThreadId,
+                mainThreadId
+            }
+        ];
         setSearchTabs(newTabs);
 
         setTimeout(() => {
@@ -710,7 +734,16 @@ const Project = () => {
         const qty = instrument.quantity ? ` (${instrument.quantity})` : '';
 
         // Pass instrument.category as productType for proper schema lookup
-        addSearchTab(instrument.sampleInput, `${index + 1}. ${instrument.category}${qty}`, true, instrument.category);
+        // Pass thread IDs received from backend for workflow resumption
+        addSearchTab(
+            instrument.sampleInput,
+            `${index + 1}. ${instrument.category}${qty}`,
+            true,
+            instrument.category,
+            instrument.item_thread_id,
+            instrument.workflow_thread_id,
+            instrument.main_thread_id
+        );
     };
 
     const handleRunAccessory = async (accessory: IdentifiedAccessory, index: number) => {
@@ -729,7 +762,16 @@ const Project = () => {
         }
 
         // Pass smart category for both tab title and productType for schema lookup
-        addSearchTab(accessory.sampleInput, `${index + 1}. ${smartCategory}${qty}`, true, smartCategory);
+        // Pass thread IDs received from backend for workflow resumption
+        addSearchTab(
+            accessory.sampleInput,
+            `${index + 1}. ${smartCategory}${qty}`,
+            true,
+            smartCategory,
+            accessory.item_thread_id,
+            accessory.workflow_thread_id,
+            accessory.main_thread_id
+        );
     };
 
     const handleNewProject = () => {
@@ -2338,6 +2380,9 @@ const Project = () => {
                                 initialInput={tab.input}
                                 isDirectSearch={tab.isDirectSearch}
                                 productType={tab.productType}
+                                itemThreadId={tab.itemThreadId}
+                                workflowThreadId={tab.workflowThreadId}
+                                mainThreadId={tab.mainThreadId}
                                 fillParent
                                 onStateChange={(state) => handleTabStateChange(tab.id, state)}
                                 savedMessages={savedState?.messages}

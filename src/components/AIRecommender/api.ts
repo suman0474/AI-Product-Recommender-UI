@@ -1,5 +1,6 @@
 // api.ts - No changes are necessary here
 import axios from "axios";
+import { getSessionManager } from "../../services/SessionManager";
 import {
   ValidationResult,
   AnalysisResult,
@@ -1973,14 +1974,37 @@ export const callAgenticProductSearch = async (
   threadId?: string,
   searchSessionId?: string,
   productType?: string,           // NEW: Product type for schema lookup
-  sourceWorkflow?: string         // NEW: Source workflow identifier
+  sourceWorkflow?: string,        // NEW: Source workflow identifier
+  itemThreadId?: string,          // CRITICAL: Item thread ID for resuming branch
+  workflowThreadIdOverride?: string // CRITICAL: Override workflow thread ID
 ): Promise<AgenticProductSearchResponse> => {
   try {
+    // Get thread context from SessionManager
+    const sessionManager = getSessionManager();
+    const mainThreadId = sessionManager.getMainThreadId();
+
+    // CRITICAL: Use provided thread IDs for workflow resumption
+    // If workflowThreadIdOverride provided, use it (resume existing workflow)
+    // Otherwise create new sub-thread
+    let workflowThreadId = workflowThreadIdOverride;
+    if (!workflowThreadId) {
+      const productSearchThread = sessionManager.createSubThread('product_search');
+      workflowThreadId = productSearchThread?.subThreadId || threadId;
+    }
+
     const payload: any = {
       message: message,
+      // UI-MANAGED THREAD IDs (required by backend)
+      main_thread_id: mainThreadId,
+      workflow_thread_id: workflowThreadId,
     };
 
-    // Include thread_id for resuming conversation
+    // CRITICAL: Include item_thread_id if provided (for resuming specific item branch)
+    if (itemThreadId) {
+      payload.item_thread_id = itemThreadId;
+    }
+
+    // Include legacy thread_id for backward compatibility
     if (threadId) {
       payload.thread_id = threadId;
     }
@@ -2002,10 +2026,13 @@ export const callAgenticProductSearch = async (
 
     console.log('[AGENTIC_PS] Calling product search:', {
       messagePreview: message.substring(0, 50),
-      threadId,
+      mainThreadId,
+      workflowThreadId,
+      itemThreadId,
       productType,
       sourceWorkflow,
-      isResume: !!threadId
+      isResume: !!threadId,
+      isResumeExistingBranch: !!itemThreadId
     });
 
     const response = await axios.post(`/api/agentic/product-search`, payload);
@@ -2088,9 +2115,20 @@ export const callProductSearchWorkflow = async (
   searchSessionId?: string
 ): Promise<any> => {
   try {
+    // Get thread context from SessionManager
+    const sessionManager = getSessionManager();
+    const mainThreadId = sessionManager.getMainThreadId();
+
+    // Create a new product_search sub-thread
+    const productSearchThread = sessionManager.createSubThread('product_search');
+    const workflowThreadId = productSearchThread?.subThreadId;
+
     const payload: any = {
       user_input: userInput,
       source: source,
+      // UI-MANAGED THREAD IDs (required by backend)
+      main_thread_id: mainThreadId,
+      workflow_thread_id: workflowThreadId,
     };
 
     if (sourceData) {
@@ -2102,6 +2140,7 @@ export const callProductSearchWorkflow = async (
     }
 
     console.log(`[PRODUCT_SEARCH] Calling workflow from source: ${source}`);
+    console.log(`[PRODUCT_SEARCH] Thread IDs: main=${mainThreadId}, workflow=${workflowThreadId}`);
     console.log(`[PRODUCT_SEARCH] User input: ${userInput.substring(0, 100)}...`);
 
     const response = await axios.post(`/api/agentic/product-search`, payload);
@@ -2154,8 +2193,15 @@ export const resumeProductSearch = async (
       throw new Error("thread_id is required to resume workflow");
     }
 
+    // Get main thread ID from SessionManager
+    const sessionManager = getSessionManager();
+    const mainThreadId = sessionManager.getMainThreadId();
+
     const payload: any = {
-      thread_id: threadId
+      thread_id: threadId,
+      // UI-MANAGED THREAD IDs (required by backend)
+      main_thread_id: mainThreadId,
+      workflow_thread_id: threadId,  // Use existing thread ID for resume
     };
 
     if (userDecision) {
@@ -2175,7 +2221,8 @@ export const resumeProductSearch = async (
     }
 
     console.log('[RESUME_PS] Resuming workflow:', {
-      threadId,
+      mainThreadId,
+      workflowThreadId: threadId,
       userDecision,
       hasProvidedFields: !!userProvidedFields,
       hasUserInput: !!userInput

@@ -59,6 +59,22 @@ interface AIRecommenderProps {
    * Passed to product search workflow for proper schema lookup.
    */
   productType?: string;
+  /**
+   * Item thread ID for resuming a specific item's product search workflow.
+   * Provided by backend during instrument identification.
+   * Ensures workflow continuation on the correct branch.
+   */
+  itemThreadId?: string;
+  /**
+   * Parent workflow thread ID for workflow context.
+   * Provided by backend during instrument identification.
+   */
+  workflowThreadId?: string;
+  /**
+   * Main session thread ID (root context).
+   * Provided by backend during instrument identification.
+   */
+  mainThreadId?: string;
   onStateChange?: (state: {
     messages: ChatMessage[];
     collectedData: { [key: string]: any };
@@ -96,6 +112,9 @@ const AIRecommender = ({
   fillParent,
   isDirectSearch = false,  // NEW: For direct product search from Run button
   productType: propProductType,  // NEW: Product type from instrument identification
+  itemThreadId: propItemThreadId,  // NEW: Item thread ID for workflow resumption
+  workflowThreadId: propWorkflowThreadId,  // NEW: Parent workflow thread ID
+  mainThreadId: propMainThreadId,  // NEW: Main session thread ID
   onStateChange,
   savedMessages,
   savedCollectedData,
@@ -973,7 +992,9 @@ const AIRecommender = ({
         undefined, // threadId - first call
         searchSessionId,
         effectiveProductType,
-        sourceWorkflow
+        sourceWorkflow,
+        propItemThreadId,  // CRITICAL: Pass item thread ID for branch resumption
+        propWorkflowThreadId  // CRITICAL: Pass workflow thread ID for context
       );
 
       console.log(`[${searchSessionId}] [AGENTIC_PS] Response received:`, {
@@ -1317,11 +1338,11 @@ const AIRecommender = ({
           const productInfoUrl = `/engenie-chat?query=${encodeURIComponent(trimmedInput)}`;
           const fullUrl = `${window.location.origin}${productInfoUrl}`;
 
-          // Show a message with a clickable link that opens in a new window
+          // Show a message with a clickable link that opens in a new tab
           await streamAssistantMessage(
             `This looks like a knowledge question about: **"${trimmedInput.substring(0, 80)}${trimmedInput.length > 80 ? '...' : ''}"**\n\n` +
             `I can help you with this in our **EnGenie Chat** knowledge base.\n\n` +
-            `👉 **[Click here to open EnGenie Chat in a new window](javascript:window.open('${fullUrl}', '_blank', 'width=1200,height=800'))** to get detailed information from our database and standards.\n\n` +
+            `👉 **[Click here to open EnGenie Chat](${fullUrl})** to get detailed information from our database and standards.\n\n` +
             `_Alternatively, if you'd like to search for a specific product, please describe your requirements (e.g., "I need a pressure transmitter 0-100 PSI")._`
           );
 
